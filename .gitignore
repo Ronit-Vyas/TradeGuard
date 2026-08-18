@@ -1,0 +1,58 @@
+# Dependencies
+node_modules/
+
+# Environment variables / secrets
+.env
+.env.*
+!.env.example
+
+# Build files
+dist/
+build/
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Local database
+data/
+mongodb/
+*.db
+*.sqlite
+*.sqlite3
+
+# Uploads / generated files
+uploads/
+tmp/
+temp/
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Private keys / certificates
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Test / cache
+.cache/
+.nyc_output/
+
+# Deployment
+.vercel/
+.netlify/
+
+# Backup files
+*.bak
+*.backup
+.vite/
