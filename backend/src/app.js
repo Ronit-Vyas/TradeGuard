@@ -1,6 +1,9 @@
 const express = require("express");
 const cors = require("cors");
 
+const brokerAccountRoutes =
+    require("./routes/brokerAccountRoutes");
+
 const app = express();
 
 app.use(cors());
@@ -11,5 +14,10 @@ app.get("/", (req, res) => {
         message: "TradeGuard API is running"
     });
 });
+
+app.use(
+    "/api/broker-accounts",
+    brokerAccountRoutes
+);
 
 module.exports = app;

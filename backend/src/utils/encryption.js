@@ -3,7 +3,7 @@ const CryptoJS = require("crypto-js");
 const SECRET_KEY = process.env.ENCRYPTION_KEY;
 
 const encrypt = (text) => {
-    return CryptoJS.AES.encrypt(text, SECRET_KEY).toString();
+    return CryptoJS.AES.encrypt(text, SECRET_KEY).toString();  //AES stands for Advanced Encryption Standard. It’s a widely used algorithm for encrypting data, meaning it transforms readable data into unreadable ciphertext using a secret key.
 };
 
 const decrypt = (encryptedText) => {

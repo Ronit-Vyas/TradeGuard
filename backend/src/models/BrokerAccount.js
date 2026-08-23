@@ -48,7 +48,7 @@ const brokerAccountSchema = new mongoose.Schema(
 
 
 // Encrypt sensitive broker credentials before saving
-brokerAccountSchema.pre("save", function (next) {
+brokerAccountSchema.pre("save", function () {
 
     if (this.isModified("credentials.apiKey") && this.credentials.apiKey) {
         this.credentials.apiKey = encrypt(this.credentials.apiKey);
@@ -66,7 +66,6 @@ brokerAccountSchema.pre("save", function (next) {
         this.credentials.refreshToken = encrypt(this.credentials.refreshToken);
     }
 
-    next();
 });
 
 
