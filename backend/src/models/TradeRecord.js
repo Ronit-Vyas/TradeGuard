@@ -3,29 +3,44 @@ const tradeRecordSchema = new mongoose.Schema(
         userId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
-            required: true
+            required: true,
+            index: true
         },
 
         brokerAccountId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "BrokerAccount",
-            required: true
+            required: true,
+            index: true
         },
 
-        broker: {
-            type: String,
-            enum: ["UPSTOX", "ANGEL_ONE", "DHAN", "KOTAK_NEO"],
-            required: true
-        },
-
+        // Broker's identifier for the order
         orderId: {
             type: String,
             required: true
         },
 
+        // Broker's identifier for the actual trade/fill
+        tradeId: {
+            type: String
+        },
+
         symbol: {
             type: String,
             required: true
+        },
+
+        exchange: {
+            type: String
+        },
+
+        segment: {
+            type: String,
+            enum: [
+                "EQUITY",
+                "FUTURES",
+                "OPTIONS"
+            ]
         },
 
         transactionType: {
@@ -39,13 +54,23 @@ const tradeRecordSchema = new mongoose.Schema(
             required: true
         },
 
-        price: Number,
-
-        averagePrice: Number,
+        executedPrice: {
+            type: Number,
+            required: true
+        },
 
         orderType: {
             type: String,
-            enum: ["MARKET", "LIMIT", "SL", "SL-M"]
+            enum: [
+                "MARKET",
+                "LIMIT",
+                "SL",
+                "SL-M"
+            ]
+        },
+
+        productType: {
+            type: String
         },
 
         status: {
@@ -58,6 +83,10 @@ const tradeRecordSchema = new mongoose.Schema(
                 "REJECTED",
                 "FAILED"
             ]
+        },
+
+        tradeTime: {
+            type: Date
         },
 
         // Original broker response
