@@ -1,4 +1,4 @@
-const CryptoJS = require("crypto-js");
+import CryptoJS from "crypto-js";
 
 const SECRET_KEY = process.env.ENCRYPTION_KEY;
 
@@ -15,7 +15,7 @@ const decrypt = (encryptedText) => {
     return bytes.toString(CryptoJS.enc.Utf8);
 };
 
-module.exports = {
+export {
     encrypt,
     decrypt
 };

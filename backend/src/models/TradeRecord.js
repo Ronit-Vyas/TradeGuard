@@ -1,3 +1,5 @@
+import mongoose from "mongoose";
+
 const tradeRecordSchema = new mongoose.Schema(
     {
         userId: {
@@ -39,9 +41,13 @@ const tradeRecordSchema = new mongoose.Schema(
             required: true
         },
 
-        price: Number,
+        price: {
+            type: Number
+        },
 
-        averagePrice: Number,
+        averagePrice: {
+            type: Number
+        },
 
         orderType: {
             type: String,
@@ -69,3 +75,10 @@ const tradeRecordSchema = new mongoose.Schema(
         timestamps: true
     }
 );
+
+const TradeRecord = mongoose.model(
+    "TradeRecord",
+    tradeRecordSchema
+);
+
+export default TradeRecord;

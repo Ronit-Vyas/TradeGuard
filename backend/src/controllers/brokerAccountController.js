@@ -1,5 +1,5 @@
-const mongoose = require("mongoose");
-const BrokerAccount = require("../models/BrokerAccount");
+import mongoose from "mongoose";
+import BrokerAccount from "../models/BrokerAccount.js";
 
 // CREATE BROKER ACCOUNT
 // POST /api/broker-accounts
@@ -41,7 +41,6 @@ const createBrokerAccount = async (req, res) => {
             });
         }
 
-        // Create broker account
         const brokerAccount = new BrokerAccount({
             userId,
             broker,
@@ -52,29 +51,31 @@ const createBrokerAccount = async (req, res) => {
         // This triggers pre("save")
         await brokerAccount.save();
 
+        // DEBUG
+        console.log(
+            "BrokerAccount collection:",
+            BrokerAccount.collection.name
+        );
 
+        console.log(
+            "BrokerAccount database:",
+            BrokerAccount.db.name
+        );
 
-
-
-
-        // DEBUG: check where Mongoose saved the document
-        console.log("BrokerAccount collection:", BrokerAccount.collection.name);
-        console.log("BrokerAccount database:", BrokerAccount.db.name);
         console.log(
             "BrokerAccount count:",
             await BrokerAccount.countDocuments()
         );
-        
-
-
 
         // Don't send encrypted credentials back to frontend
         const response = brokerAccount.toObject();
 
-        delete response.credentials.apiKey; // for not sending sensitive information to frontend
-        delete response.credentials.apiSecret;
-        delete response.credentials.accessToken;
-        delete response.credentials.refreshToken;
+        if (response.credentials) {
+            delete response.credentials.apiKey;
+            delete response.credentials.apiSecret;
+            delete response.credentials.accessToken;
+            delete response.credentials.refreshToken;
+        }
 
         return res.status(201).json({
             success: true,
@@ -88,7 +89,6 @@ const createBrokerAccount = async (req, res) => {
 
         return res.status(500).json({
             success: false,
-            // message: "Failed to create broker account"
             message: error.message,
             error: error.name
         });
@@ -208,7 +208,7 @@ const updateBrokerAccount = async (req, res) => {
             });
         }
 
-        const brokerAccount = await BrokerAccount.findById(id);//Mongoose save middleware doesn't automatically behave the same way for findOneAndUpdate(). that's why we don't use findOneAndUpdate() 
+        const brokerAccount = await BrokerAccount.findById(id);
 
         if (!brokerAccount) {
             return res.status(404).json({
@@ -223,12 +223,10 @@ const updateBrokerAccount = async (req, res) => {
             isActive
         } = req.body;
 
-
         // Update broker
         if (broker) {
             brokerAccount.broker = broker;
         }
-
 
         // Update credentials
         if (credentials) {
@@ -264,25 +262,22 @@ const updateBrokerAccount = async (req, res) => {
             }
         }
 
-
         // Update active status
         if (isActive !== undefined) {
             brokerAccount.isActive = isActive;
         }
 
-
-        // IMPORTANT:
-        // save() triggers our encryption middleware
+        // save() triggers encryption middleware
         await brokerAccount.save();
-
 
         const response = brokerAccount.toObject();
 
-        delete response.credentials.apiKey;
-        delete response.credentials.apiSecret;
-        delete response.credentials.accessToken;
-        delete response.credentials.refreshToken;
-
+        if (response.credentials) {
+            delete response.credentials.apiKey;
+            delete response.credentials.apiSecret;
+            delete response.credentials.accessToken;
+            delete response.credentials.refreshToken;
+        }
 
         return res.status(200).json({
             success: true,
@@ -352,7 +347,8 @@ const deleteBrokerAccount = async (req, res) => {
 };
 
 
-module.exports = {
+// ES MODULE EXPORTS
+export {
     createBrokerAccount,
     getBrokerAccounts,
     getBrokerAccount,

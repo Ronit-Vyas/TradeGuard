@@ -9,7 +9,7 @@ dotenv.config();
 export async function login(req, res) {
 
     try{
-       const {email , password} = req.body
+        const {email , password} = req.body
 
        const user = await User.findOne({email});
 
@@ -99,10 +99,11 @@ export async function register(req,res) {
         return res.status(400).json({message : "User already exists"})
        }
        
-       const lastUser = await User.findOne().sort({ userId: -1 }); // Get the last user to determine the next userId
-       
-       const nextUserId = lastUser ? lastUser.userId + 1 : 1;
-       
+       const lastUser = await User.findOne().sort({ userId: -1 });
+
+        const nextUserId = lastUser && Number.isFinite(lastUser.userId)
+        ? lastUser.userId + 1
+        : 1;
        const newUser = new User({userId: nextUserId, username, email, password});
        
        await newUser.save();

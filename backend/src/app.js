@@ -1,9 +1,6 @@
-const express = require("express");
-const cors = require("cors");
-
-const brokerAccountRoutes =
-    require("./routes/brokerAccountRoutes");
-
+import express from "express";
+import cors from "cors";
+import brokerAccountRoutes from "./routes/brokerAccountRoutes.js";
 const app = express();
 
 app.use(cors());
@@ -20,4 +17,4 @@ app.use(
     brokerAccountRoutes
 );
 
-module.exports = app;
+export default app;
