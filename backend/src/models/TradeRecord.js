@@ -5,44 +5,43 @@ const tradeRecordSchema = new mongoose.Schema(
         userId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
-            required: true,
-            index: true
+            required: true
         },
 
         brokerAccountId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "BrokerAccount",
-            required: true,
-            index: true
+            required: true
         },
 
-        // Broker's identifier for the order
-        orderId: {
+        broker: {
+            type: String,
+            enum: [
+                "UPSTOX",
+                "ANGEL_ONE",
+                "DHAN",
+                "KOTAK_NEO"
+            ],
+            required: true
+        },
+
+        // Broker's unique trade/execution ID.
+        // Example: Upstox historical trade_id.
+        tradeId: {
             type: String,
             required: true
         },
 
-        // Broker's identifier for the actual trade/fill
-        tradeId: {
-            type: String
+        // Order ID is optional because some broker
+        // historical-trade APIs don't provide it.
+        orderId: {
+            type: String,
+            default: null
         },
 
         symbol: {
             type: String,
             required: true
-        },
-
-        exchange: {
-            type: String
-        },
-
-        segment: {
-            type: String,
-            enum: [
-                "EQUITY",
-                "FUTURES",
-                "OPTIONS"
-            ]
         },
 
         transactionType: {
@@ -56,10 +55,9 @@ const tradeRecordSchema = new mongoose.Schema(
             required: true
         },
 
-        executedPrice: {
-            type: Number,
-            required: true
-        },
+        price: Number,
+
+        averagePrice: Number,
 
         orderType: {
             type: String,
@@ -69,10 +67,6 @@ const tradeRecordSchema = new mongoose.Schema(
                 "SL",
                 "SL-M"
             ]
-        },
-
-        productType: {
-            type: String
         },
 
         status: {
@@ -87,11 +81,6 @@ const tradeRecordSchema = new mongoose.Schema(
             ]
         },
 
-        tradeTime: {
-            type: Date
-        },
-
-        // Original broker response
         brokerResponse: {
             type: mongoose.Schema.Types.Mixed
         }
@@ -101,9 +90,23 @@ const tradeRecordSchema = new mongoose.Schema(
     }
 );
 
-const TradeRecord = mongoose.model(
-    "TradeRecord",
-    tradeRecordSchema
+
+// Prevent duplicate trades for the same broker account.
+tradeRecordSchema.index(
+    {
+        brokerAccountId: 1,
+        tradeId: 1
+    },
+    {
+        unique: true
+    }
 );
+
+
+const TradeRecord =
+    mongoose.model(
+        "TradeRecord",
+        tradeRecordSchema
+    );
 
 export default TradeRecord;
