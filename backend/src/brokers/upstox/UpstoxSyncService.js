@@ -15,7 +15,7 @@ const syncUpstoxHistoricalTrades = async ({
     startDate,
     endDate
 }) => {
-
+    
     if (!brokerAccountId) {
         throw new Error(
             "brokerAccountId is required"
@@ -39,7 +39,7 @@ const syncUpstoxHistoricalTrades = async ({
             "Broker account not found"
         );
     }
-
+    
     if (brokerAccount.broker !== "UPSTOX") {
         throw new Error(
             "Broker account is not an Upstox account"
@@ -58,18 +58,20 @@ const syncUpstoxHistoricalTrades = async ({
         );
     }
 
-
+    console.log("Acc Token = ",brokerAccount.credentials.accessToken);
     const accessToken =
         decrypt(
             brokerAccount.credentials.accessToken
         );
+    
+    console.log("Access Token = ",accessToken);
 
     if (!accessToken) {
         throw new Error(
             "Failed to decrypt Upstox access token"
         );
     }
-
+   
     const upstox =
         new UpstoxAdapter(accessToken);
 

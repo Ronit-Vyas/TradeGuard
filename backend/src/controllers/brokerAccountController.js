@@ -1,5 +1,9 @@
 import mongoose from "mongoose";
 import BrokerAccount from "../models/BrokerAccount.js";
+import { startUpstoxStream } from "../brokers/upstox/UpstoxConnectionManager.js";
+import { syncUpstoxHistoricalTrades } from "../brokers/upstox/UpstoxSyncService.js";
+
+
 
 // CREATE BROKER ACCOUNT
 // POST /api/broker-accounts
@@ -50,6 +54,23 @@ const createBrokerAccount = async (req, res) => {
         // Save through Mongoose
         // This triggers pre("save")
         await brokerAccount.save();
+
+         if (brokerAccount.broker === "UPSTOX") {
+            console.log(
+                "Starting Upstox stream for account:",
+                brokerAccount._id.toString()
+            );
+           await startUpstoxStream(brokerAccount._id);
+           console.log(
+             "Upstox stream started for account:",
+             brokerAccount._id.toString()
+           );
+           await syncUpstoxHistoricalTrades({
+                brokerAccountId: brokerAccount._id,
+                startDate: "2025-04-01",
+                endDate: new Date().toISOString().slice(0, 10),
+            });
+         }
 
         // DEBUG
         console.log(
