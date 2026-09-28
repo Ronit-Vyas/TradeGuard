@@ -1,5 +1,5 @@
-const mongoose = require("mongoose");
-const { encrypt } = require("../utils/encryption");
+import mongoose from "mongoose";
+import { encrypt } from "../utils/encryption.js";
 
 const brokerAccountSchema = new mongoose.Schema(
     {
@@ -76,4 +76,9 @@ brokerAccountSchema.index(
 );
 
 
-module.exports = mongoose.model("BrokerAccount", brokerAccountSchema);
+const BrokerAccount = mongoose.model(
+    "BrokerAccount",
+    brokerAccountSchema
+);
+
+export default BrokerAccount;

@@ -1,38 +1,23 @@
-const express = require("express");
+import express from "express";
 
-const {
+import {
     createBrokerAccount,
     getBrokerAccounts,
     getBrokerAccount,
     updateBrokerAccount,
-    deleteBrokerAccount
-} = require("../controllers/brokerAccountController");
+    deleteBrokerAccount,
+} from "../controllers/brokerAccountController.js";
 
 const router = express.Router();
 
-router.post(
-    "/",
-    createBrokerAccount
-);
+router.post("/", createBrokerAccount);
 
-router.get(
-    "/",
-    getBrokerAccounts
-);
+router.get("/", getBrokerAccounts);
 
-router.get(
-    "/:id",
-    getBrokerAccount
-);
+router.get("/:id", getBrokerAccount);
 
-router.put(
-    "/:id",
-    updateBrokerAccount
-);
+router.put("/:id", updateBrokerAccount);
 
-router.delete(
-    "/:id",
-    deleteBrokerAccount
-);
+router.delete("/:id", deleteBrokerAccount);
 
-module.exports = router;
+export default router;

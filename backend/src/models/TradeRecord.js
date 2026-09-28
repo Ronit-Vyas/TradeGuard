@@ -1,3 +1,5 @@
+import mongoose from "mongoose";
+
 const tradeRecordSchema = new mongoose.Schema(
     {
         userId: {
@@ -10,19 +12,32 @@ const tradeRecordSchema = new mongoose.Schema(
         brokerAccountId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "BrokerAccount",
-            required: true,
-            index: true
+            required: true
         },
 
-        // Broker's identifier for the order
-        orderId: {
+        broker: {
+            type: String,
+            enum: [
+                "UPSTOX",
+                "ANGEL_ONE",
+                "DHAN",
+                "KOTAK_NEO"
+            ],
+            required: true
+        },
+
+        // Broker's unique trade/execution ID.
+        // Example: Upstox historical trade_id.
+        tradeId: {
             type: String,
             required: true
         },
 
-        // Broker's identifier for the actual trade/fill
-        tradeId: {
-            type: String
+        // Order ID is optional because some broker
+        // historical-trade APIs don't provide it.
+        orderId: {
+            type: String,
+            default: null
         },
 
         symbol: {
@@ -69,10 +84,6 @@ const tradeRecordSchema = new mongoose.Schema(
             ]
         },
 
-        productType: {
-            type: String
-        },
-
         status: {
             type: String,
             enum: [
@@ -85,11 +96,6 @@ const tradeRecordSchema = new mongoose.Schema(
             ]
         },
 
-        tradeTime: {
-            type: Date
-        },
-
-        // Original broker response
         brokerResponse: {
             type: mongoose.Schema.Types.Mixed
         }
@@ -98,3 +104,24 @@ const tradeRecordSchema = new mongoose.Schema(
         timestamps: true
     }
 );
+
+
+// Prevent duplicate trades for the same broker account.
+tradeRecordSchema.index(
+    {
+        brokerAccountId: 1,
+        tradeId: 1
+    },
+    {
+        unique: true
+    }
+);
+
+
+const TradeRecord =
+    mongoose.model(
+        "TradeRecord",
+        tradeRecordSchema
+    );
+
+export default TradeRecord;

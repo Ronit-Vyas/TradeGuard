@@ -348,4 +348,4 @@ const brokerConfig = {
     }
 };
 
-module.exports = brokerConfig;
+export default brokerConfig;
