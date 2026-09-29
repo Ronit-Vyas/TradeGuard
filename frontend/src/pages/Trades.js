@@ -1,71 +1,215 @@
-import React, { useState, useMemo } from 'react';
-import { Card, InfoBanner } from '../components/Card';
-import { Info, X, ChevronLeft, ChevronRight } from 'lucide-react';
-import { mockTrades, BROKER_META } from '../data/mockData';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Card } from '../components/Card';
+import { X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { api } from '../api/client';
+
+function getTradeDate(trade) {
+  return trade.tradeTime || trade.executedAt || trade.createdAt || trade.updatedAt || null;
+}
+
+function formatDate(value) {
+  if (!value) return '—';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+
+  return date.toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function formatTime(value) {
+  if (!value) return '';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  return date.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function formatINR(value) {
+  return `₹${Number(value || 0).toLocaleString('en-IN')}`;
+}
+
+function getExecutionPrice(trade) {
+  return trade.executedPrice ?? trade.averagePrice ?? trade.price;
+}
+
+function getExecutionId(trade) {
+  return trade.tradeId || trade.orderId || trade._id || 'Execution';
+}
 
 export default function Trades() {
+  const [trades, setTrades] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
   const [range, setRange] = useState('30d');
   const [broker, setBroker] = useState('all');
   const [side, setSide] = useState('all');
   const [search, setSearch] = useState('');
   const [drawerTrade, setDrawerTrade] = useState(null);
-  const [showBanner, setShowBanner] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadTrades() {
+      setLoading(true);
+      setError('');
+
+      try {
+        const response = await api.listTrades();
+
+        if (active) {
+          setTrades(Array.isArray(response?.data) ? response.data : []);
+        }
+      } catch (err) {
+        if (active) {
+          setError(
+            err?.response?.data?.message ||
+              err?.message ||
+              'Unable to load saved trades.'
+          );
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    loadTrades();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const brokers = useMemo(
+    () => [...new Set(trades.map((trade) => trade.broker).filter(Boolean))].sort(),
+    [trades]
+  );
 
   const filtered = useMemo(() => {
-    return mockTrades.filter((t) => {
-      if (broker !== 'all' && t.broker !== broker) return false;
-      if (side !== 'all' && t.side !== side) return false;
-      if (search && !t.symbol.toLowerCase().includes(search.toLowerCase()) && !t.id.toLowerCase().includes(search.toLowerCase())) return false;
-      return true;
-    });
-  }, [broker, side, search]);
+    const now = new Date();
+    const days = range === '1d' ? 1 : range === '7d' ? 7 : range === '90d' ? 90 : range === '1y' ? 365 : 30;
+    const cutoff = new Date(now);
+    cutoff.setDate(cutoff.getDate() - days);
+
+    const query = search.trim().toLowerCase();
+
+    return trades
+      .filter((trade) => {
+        const tradeDateValue = getTradeDate(trade);
+
+        if (tradeDateValue) {
+          const tradeDate = new Date(tradeDateValue);
+
+          if (
+            Number.isNaN(tradeDate.getTime()) ||
+            tradeDate < cutoff ||
+            tradeDate > now
+          ) {
+            return false;
+          }
+        } else {
+          // Records without a usable date cannot be assigned to a date range.
+          return false;
+        }
+
+        if (broker !== 'all' && trade.broker !== broker) return false;
+
+        if (side !== 'all' && trade.transactionType !== side) return false;
+
+        if (query) {
+          const searchableText = [
+            trade.symbol,
+            trade.tradeId,
+            trade.orderId,
+            trade._id,
+          ]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase();
+
+          if (!searchableText.includes(query)) return false;
+        }
+
+        return true;
+      })
+      .sort(
+        (a, b) =>
+          new Date(getTradeDate(b)).getTime() -
+          new Date(getTradeDate(a)).getTime()
+      );
+  }, [trades, range, broker, side, search]);
 
   return (
     <>
       <div className="page-header">
         <h1 className="page-title">Trade history</h1>
-        <p className="page-description">Search, filter, and inspect synchronized trade records.</p>
+        <p className="page-description">
+          Search, filter, and inspect executions saved from your connected broker accounts.
+        </p>
       </div>
 
-      {showBanner && (
-        <div className="info-banner" style={{ position: 'relative' }}>
-          <Info size={15} />
-          <span>Illustrative sample data — not live broker information.</span>
-          <button
-            className="icon-btn"
-            style={{ marginLeft: 'auto', width: 24, height: 24 }}
-            onClick={() => setShowBanner(false)}
-          >
-            <X size={14} />
-          </button>
+      {error && (
+        <div className="info-banner" role="alert">
+          Unable to load trades: {error}
         </div>
       )}
 
       <Card padded={false}>
         <div style={{ padding: 20 }}>
-          <div className="card-title">All trades</div>
-          <div className="card-subtitle">10 locally stored sample executions</div>
+          <div className="card-title">All executions</div>
+          <div className="card-subtitle">
+            {loading
+              ? 'Loading saved executions…'
+              : `Showing ${filtered.length} of ${trades.length} database records`}
+          </div>
 
           <div className="filters-row" style={{ marginTop: 16 }}>
             <input
               className="form-input"
               style={{ flex: 1, minWidth: 200 }}
-              placeholder="Search symbol or trade ID…"
+              placeholder="Search symbol, trade ID or order ID…"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(event) => setSearch(event.target.value)}
             />
-            <select className="filter-select" value={range} onChange={(e) => setRange(e.target.value)}>
-              <option value="7d">7 days</option>
-              <option value="30d">30 days</option>
-              <option value="90d">90 days</option>
+
+            <select
+              className="filter-select"
+              value={range}
+              onChange={(event) => setRange(event.target.value)}
+            >
+              <option value="1d">Last 1 day</option>
+              <option value="7d">Last 7 days</option>
+              <option value="30d">Last 30 days</option>
+              <option value="90d">Last 90 days</option>
+              <option value="1y">Last 1 year</option>
             </select>
-            <select className="filter-select" value={broker} onChange={(e) => setBroker(e.target.value)}>
+
+            <select
+              className="filter-select"
+              value={broker}
+              onChange={(event) => setBroker(event.target.value)}
+            >
               <option value="all">All brokers</option>
-              {Object.entries(BROKER_META).map(([k, m]) => (
-                <option key={k} value={k}>{m.name}</option>
+              {brokers.map((brokerName) => (
+                <option key={brokerName} value={brokerName}>
+                  {brokerName}
+                </option>
               ))}
             </select>
-            <select className="filter-select" value={side} onChange={(e) => setSide(e.target.value)}>
+
+            <select
+              className="filter-select"
+              value={side}
+              onChange={(event) => setSide(event.target.value)}
+            >
               <option value="all">All sides</option>
               <option value="BUY">Buy</option>
               <option value="SELL">Sell</option>
@@ -82,60 +226,119 @@ export default function Trades() {
                 <th>Broker</th>
                 <th>Side</th>
                 <th className="text-right">Qty</th>
-                <th className="text-right">Avg. price</th>
-                <th>Order</th>
-                <th className="text-right">P&L</th>
+                <th className="text-right">Execution price</th>
+                <th>Order type</th>
+                <th>Order ID</th>
+                <th>Trade ID</th>
               </tr>
             </thead>
+
             <tbody>
-              {filtered.length === 0 && (
+              {!loading && filtered.length === 0 && (
                 <tr>
-                  <td colSpan="8" style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>
-                    No trades match your filters
+                  <td
+                    colSpan={9}
+                    style={{
+                      textAlign: 'center',
+                      padding: 40,
+                      color: 'var(--text-muted)',
+                    }}
+                  >
+                    No saved executions match your filters.
                   </td>
                 </tr>
               )}
-              {filtered.map((t) => (
-                <tr key={t.id} onClick={() => setDrawerTrade(t)}>
-                  <td>
-                    <div className="text-primary">
-                      {new Date(t.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
-                    </div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                      {new Date(t.date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
-                    </div>
-                  </td>
-                  <td>
-                    <div className="text-primary">{t.symbol}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{t.segment}</div>
-                  </td>
-                  <td>{BROKER_META[t.broker]?.name || t.broker}</td>
-                  <td>
-                    <span className={`badge ${t.side === 'BUY' ? 'badge-success' : 'badge-danger'}`}>
-                      {t.side}
-                    </span>
-                  </td>
-                  <td className="text-right mono">{t.qty}</td>
-                  <td className="text-right mono">₹{t.avgPrice.toLocaleString('en-IN')}</td>
-                  <td>{t.orderType}</td>
-                  <td className="text-right mono" style={{ color: t.pnl >= 0 ? 'var(--success)' : 'var(--danger)', fontWeight: 500 }}>
-                    {t.pnl >= 0 ? '+' : ''}₹{Math.abs(t.pnl).toLocaleString('en-IN')}
-                  </td>
-                </tr>
-              ))}
+
+              {filtered.map((trade) => {
+                const date = getTradeDate(trade);
+                const sideValue = trade.transactionType;
+
+                return (
+                  <tr
+                    key={trade._id || trade.tradeId || trade.orderId}
+                    onClick={() => setDrawerTrade(trade)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <td>
+                      <div className="text-primary">{formatDate(date)}</div>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: 'var(--text-muted)',
+                        }}
+                      >
+                        {formatTime(date)}
+                      </div>
+                    </td>
+
+                    <td>
+                      <div className="text-primary">{trade.symbol || '—'}</div>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: 'var(--text-muted)',
+                        }}
+                      >
+                        {trade.segment || trade.exchange || '—'}
+                      </div>
+                    </td>
+
+                    <td>{trade.broker || '—'}</td>
+
+                    <td>
+                      <span
+                        className={`badge ${
+                          sideValue === 'BUY'
+                            ? 'badge-success'
+                            : sideValue === 'SELL'
+                            ? 'badge-danger'
+                            : ''
+                        }`}
+                      >
+                        {sideValue || '—'}
+                      </span>
+                    </td>
+
+                    <td className="text-right mono">
+                      {trade.quantity ?? '—'}
+                    </td>
+
+                    <td className="text-right mono">
+                      {getExecutionPrice(trade) == null
+                        ? '—'
+                        : formatINR(getExecutionPrice(trade))}
+                    </td>
+
+                    <td>{trade.orderType || '—'}</td>
+                    <td>{trade.orderId || '—'}</td>
+                    <td>{trade.tradeId || '—'}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
 
-        <div style={{ padding: '14px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)' }}>
+        <div
+          style={{
+            padding: '14px 20px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            borderTop: '1px solid var(--border)',
+          }}
+        >
           <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-            Showing {filtered.length} of {mockTrades.length} sample trades
+            {loading
+              ? 'Loading records…'
+              : `Showing ${filtered.length} of ${trades.length} saved executions`}
           </span>
+
           <div className="flex gap-2">
-            <button className="icon-btn" disabled>
+            <button className="icon-btn" disabled aria-label="Previous page">
               <ChevronLeft size={16} />
             </button>
-            <button className="icon-btn" disabled>
+            <button className="icon-btn" disabled aria-label="Next page">
               <ChevronRight size={16} />
             </button>
           </div>
@@ -144,50 +347,73 @@ export default function Trades() {
 
       {drawerTrade && (
         <>
-          <div className="drawer-overlay" onClick={() => setDrawerTrade(null)} />
+          <div
+            className="drawer-overlay"
+            onClick={() => setDrawerTrade(null)}
+          />
+
           <div className="drawer">
             <div className="drawer-header">
               <div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Trade details</div>
-                <div style={{ fontSize: 15, fontWeight: 600 }}>{drawerTrade.id}</div>
                 <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  Illustrative execution record
+                  Execution details
+                </div>
+                <div style={{ fontSize: 15, fontWeight: 600 }}>
+                  {getExecutionId(drawerTrade)}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                  Saved TradeGuard execution record
                 </div>
               </div>
-              <button className="icon-btn" onClick={() => setDrawerTrade(null)}>
+
+              <button
+                className="icon-btn"
+                aria-label="Close trade details"
+                onClick={() => setDrawerTrade(null)}
+              >
                 <X size={18} />
               </button>
             </div>
 
             {[
               ['Symbol', drawerTrade.symbol],
-              ['Broker', BROKER_META[drawerTrade.broker]?.name || drawerTrade.broker],
-              ['Side', drawerTrade.side],
-              ['Quantity', drawerTrade.qty],
-              ['Average price', `₹${drawerTrade.avgPrice.toLocaleString('en-IN')}`],
+              ['Broker', drawerTrade.broker],
+              ['Side', drawerTrade.transactionType],
+              ['Quantity', drawerTrade.quantity],
+              [
+                'Execution price',
+                getExecutionPrice(drawerTrade) == null
+                  ? '—'
+                  : formatINR(getExecutionPrice(drawerTrade)),
+              ],
               ['Order type', drawerTrade.orderType],
-              ['Segment', drawerTrade.segment],
-              ['Executed', new Date(drawerTrade.date).toLocaleString('en-GB')],
+              ['Segment', drawerTrade.segment || drawerTrade.exchange],
+              ['Order ID', drawerTrade.orderId],
+              ['Trade ID', drawerTrade.tradeId],
+              ['Status', drawerTrade.status],
+              [
+                'Executed / saved',
+                getTradeDate(drawerTrade)
+                  ? new Date(getTradeDate(drawerTrade)).toLocaleString('en-GB')
+                  : '—',
+              ],
             ].map(([label, value]) => (
               <div className="detail-row" key={label}>
                 <span className="detail-label">{label}</span>
-                <span className="detail-value">{value}</span>
+                <span className="detail-value">{value ?? '—'}</span>
               </div>
             ))}
 
-            <div style={{ marginTop: 20 }}>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
-                Realized P&L
-              </div>
-              <div
-                style={{
-                  fontSize: 20,
-                  fontWeight: 600,
-                  color: drawerTrade.pnl >= 0 ? 'var(--success)' : 'var(--danger)',
-                }}
-              >
-                {drawerTrade.pnl >= 0 ? '+' : ''}₹{Math.abs(drawerTrade.pnl).toLocaleString('en-IN')}
-              </div>
+            <div
+              style={{
+                marginTop: 20,
+                fontSize: 12,
+                color: 'var(--text-muted)',
+              }}
+            >
+              Realized P&amp;L is not shown for an individual execution. It
+              requires matching buy and sell executions and applying the
+              selected accounting method.
             </div>
           </div>
         </>

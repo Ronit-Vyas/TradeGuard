@@ -38,11 +38,41 @@ export default function BrokerAccounts() {
 
   async function handleSync(id) {
     setSyncingId(id);
-    // Simulate sync — no backend endpoint exists for syncing from frontend
-    setTimeout(() => {
+    try {
+      const now = new Date();
+      const currentYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+      const startDate = `${currentYear}-04-01`;
+      const endDate = `${currentYear + 1}-03-31`;
+
+      const response = await api.syncBrokerTrades(id, { startDate, endDate });
+      const data = response?.data;
+      if (data) {
+        toast.push(
+          `Sync complete — ${data.inserted || 0} new, ${data.updated || 0} updated, ${data.skipped || 0} skipped`,
+          'success'
+        );
+      } else {
+        toast.push('Sync complete', 'success');
+      }
+      await load();
+    } catch (err) {
+      toast.push(err.message || 'Failed to sync trades', 'error');
+    } finally {
       setSyncingId(null);
-      toast.push('Sync simulated — no live broker sync endpoint available', 'info');
-    }, 1200);
+    }
+  }
+
+  async function handleConnect(id) {
+    setSyncingId(id);
+    try {
+      await api.updateBrokerAccount(id, { isConnected: true, lastConnectedAt: new Date().toISOString() });
+      toast.push('Broker account connected', 'success');
+      await load();
+    } catch (err) {
+      toast.push(err.message || 'Failed to connect', 'error');
+    } finally {
+      setSyncingId(null);
+    }
   }
 
   return (
@@ -165,15 +195,15 @@ export default function BrokerAccounts() {
                 <div className="broker-actions">
                   <button
                     className={`btn ${actionNeeded || !connected ? 'btn-primary' : 'btn-secondary'} w-full`}
-                    onClick={() => connected ? handleSync(acc._id) : navigate(`/app/broker-accounts/${acc._id}/edit`)}
+                    onClick={() => connected ? handleSync(acc._id) : handleConnect(acc._id)}
                     disabled={syncing}
                   >
                     {syncing ? (
-                      <><span className="spinner" /> Syncing…</>
+                      <><span className="spinner" /> Connecting…</>
                     ) : connected ? (
                       <><RefreshCw size={14} /> Sync trades</>
                     ) : (
-                      <><Link2 size={14} /> Connect demo</>
+                      <><Link2 size={14} /> Connect</>
                     )}
                   </button>
                 </div>

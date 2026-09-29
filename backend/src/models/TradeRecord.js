@@ -96,6 +96,14 @@ const tradeRecordSchema = new mongoose.Schema(
             ]
         },
 
+        productCode: {
+            type: String
+        },
+
+        tradeTime: {
+            type: Date
+        },
+
         brokerResponse: {
             type: mongoose.Schema.Types.Mixed
         }

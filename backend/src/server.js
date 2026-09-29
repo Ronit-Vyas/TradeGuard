@@ -1,5 +1,6 @@
 import userRoutes from './routes/userRoutes.js';
 import brokerAccountRoutes from './routes/brokerAccountRoutes.js'
+import tradeRoutes from './routes/tradeRoutes.js';
 import express from 'express';
 import {connectDB} from './config/db.js';
 import cors from 'cors';
@@ -22,6 +23,7 @@ app.use(express.json())
 
 app.use("/api/users" , userRoutes);
 app.use("/api/broker-accounts", brokerAccountRoutes);
+app.use("/api/trades", tradeRoutes);
 
 const startServer = async () => {
     await connectDB();

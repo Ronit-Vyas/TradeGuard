@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import BrokerAccount from "../models/BrokerAccount.js";
+import { syncUpstoxHistoricalTrades, syncUpstoxTodayTrades } from "../brokers/upstox/UpstoxSyncService.js";
 
 // CREATE BROKER ACCOUNT
 // POST /api/broker-accounts
@@ -220,7 +221,9 @@ const updateBrokerAccount = async (req, res) => {
         const {
             broker,
             credentials,
-            isActive
+            isActive,
+            isConnected,
+            lastConnectedAt
         } = req.body;
 
         // Update broker
@@ -265,6 +268,16 @@ const updateBrokerAccount = async (req, res) => {
         // Update active status
         if (isActive !== undefined) {
             brokerAccount.isActive = isActive;
+        }
+
+        // Update connection status
+        if (isConnected !== undefined) {
+            brokerAccount.isConnected = isConnected;
+        }
+
+        // Update last connected timestamp
+        if (lastConnectedAt !== undefined) {
+            brokerAccount.lastConnectedAt = lastConnectedAt;
         }
 
         // save() triggers encryption middleware
@@ -347,11 +360,84 @@ const deleteBrokerAccount = async (req, res) => {
 };
 
 
+// SYNC BROKER TRADES
+// POST /api/broker-accounts/:id/sync
+
+const syncBrokerTrades = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { startDate, endDate } = req.body;
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid broker account ID"
+            });
+        }
+
+        const brokerAccount = await BrokerAccount.findById(id);
+
+        if (!brokerAccount) {
+            return res.status(404).json({
+                success: false,
+                message: "Broker account not found"
+            });
+        }
+
+        if (!brokerAccount.isConnected) {
+            return res.status(400).json({
+                success: false,
+                message: "Broker account is not connected"
+            });
+        }
+
+        let result;
+
+        if (brokerAccount.broker === "UPSTOX") {
+            if (startDate && endDate) {
+                result = await syncUpstoxHistoricalTrades({
+                    brokerAccountId: id,
+                    startDate,
+                    endDate
+                });
+            } else {
+                result = await syncUpstoxTodayTrades({
+                    brokerAccountId: id
+                });
+            }
+        } else {
+            return res.status(400).json({
+                success: false,
+                message: `Sync not implemented for broker: ${brokerAccount.broker}`
+            });
+        }
+
+        // Update last connected timestamp
+        brokerAccount.lastConnectedAt = new Date();
+        await brokerAccount.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "Trades synced successfully",
+            data: result
+        });
+
+    } catch (error) {
+        console.error("Sync Broker Trades Error:", error);
+        return res.status(500).json({
+            success: false,
+            message: error.message || "Failed to sync trades"
+        });
+    }
+};
+
+
 // ES MODULE EXPORTS
 export {
     createBrokerAccount,
     getBrokerAccounts,
     getBrokerAccount,
     updateBrokerAccount,
-    deleteBrokerAccount
+    deleteBrokerAccount,
+    syncBrokerTrades
 };

@@ -86,7 +86,9 @@ const saveUpstoxTrades = async (brokerAccount, trades) => {
         } catch (error) {
             console.error(
                 "Failed to save Upstox trade:",
-                error.message
+                error.message,
+                "Trade data:",
+                JSON.stringify(trade).slice(0, 200)
             );
 
             skipped++;

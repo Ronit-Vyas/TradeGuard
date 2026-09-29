@@ -1,17 +1,42 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, StatCard, InfoBanner } from '../components/Card';
 import { Info, AlertTriangle } from 'lucide-react';
-
-const EXPOSURES = [
-  { instrument: 'NIFTY 50', value: 82480, max: 100000 },
-  { instrument: 'BANKNIFTY', value: 56200, max: 100000 },
-  { instrument: 'RELIANCE', value: 31000, max: 100000 },
-  { instrument: 'TCS', value: 21600, max: 100000 },
-];
+import { api } from '../api/client';
 
 export default function RiskManagement() {
   const [dailyLimit, setDailyLimit] = useState(15000);
   const [riskPerTrade, setRiskPerTrade] = useState(1.5);
+  const [exposures, setExposures] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadExposures() {
+      setLoading(true);
+      setError('');
+      try {
+        const response = await api.riskExposures();
+        if (active) {
+          setExposures(response?.data?.exposures || []);
+        }
+      } catch (err) {
+        if (active) {
+          setError(err.message || 'Failed to load exposures');
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    loadExposures();
+    return () => { active = false; };
+  }, []);
+
+  const totalExposure = exposures.reduce((sum, e) => sum + (e.avgPrice * e.quantity), 0);
+  const maxExposure = 100000;
+  const exposurePct = totalExposure > 0 ? Math.min((totalExposure / maxExposure) * 100, 100) : 0;
 
   return (
     <>
@@ -24,34 +49,49 @@ export default function RiskManagement() {
         These settings provide visual guidance only. They cannot place, modify, or block orders.
       </InfoBanner>
 
+      {error && (
+        <div className="info-banner" role="alert">
+          Could not load exposure data: {error}
+        </div>
+      )}
+
       <div className="stat-grid">
-        <StatCard label="Daily loss used" value="₹8,408 / ₹15K" change="56% used" changeType="neutral" />
-        <StatCard label="Current drawdown" value="3.2%" change="Within 8% limit" changeType="positive" />
-        <StatCard label="Risk per trade" value="1.5%" change="Configured" changeType="neutral" />
-        <StatCard label="Avg. risk/reward" value="1 : 1.84" change="Healthy" changeType="positive" />
+        <StatCard label="Total exposure" value={`₹${Math.round(totalExposure).toLocaleString('en-IN')}`} change={`${exposures.length} open positions`} changeType="neutral" />
+        <StatCard label="Exposure used" value={`${exposurePct.toFixed(1)}%`} change="Of ₹100K limit" changeType={exposurePct > 75 ? 'negative' : 'positive'} />
+        <StatCard label="Risk per trade" value={`${riskPerTrade.toFixed(1)}%`} change="Configured" changeType="neutral" />
+        <StatCard label="Daily loss limit" value={`₹${dailyLimit.toLocaleString('en-IN')}`} change="Configured" changeType="neutral" />
       </div>
 
       <div className="grid-2">
-        <Card title="Exposure summary" subtitle="Open sample positions by instrument">
-          {EXPOSURES.map((e) => {
-            const pct = (e.value / e.max) * 100;
-            return (
-              <div className="progress-row" key={e.instrument}>
-                <div className="progress-header">
-                  <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{e.instrument}</span>
-                  <span className="mono" style={{ color: 'var(--text-secondary)' }}>
-                    ₹{e.value.toLocaleString('en-IN')}
-                  </span>
+        <Card title="Exposure summary" subtitle="Open positions from your trade records">
+          {loading ? (
+            <p>Loading exposures…</p>
+          ) : exposures.length === 0 ? (
+            <div style={{ minHeight: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', textAlign: 'center', padding: 20 }}>
+              No open positions found in your trade records.
+            </div>
+          ) : (
+            exposures.map((e) => {
+              const value = e.avgPrice * e.quantity;
+              const pct = Math.min((value / maxExposure) * 100, 100);
+              return (
+                <div className="progress-row" key={e.instrument}>
+                  <div className="progress-header">
+                    <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{e.instrument}</span>
+                    <span className="mono" style={{ color: 'var(--text-secondary)' }}>
+                      ₹{Math.round(value).toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                  <div className="progress-bar">
+                    <div
+                      className={`progress-fill ${pct > 75 ? 'warning' : ''}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="progress-bar">
-                  <div
-                    className={`progress-fill ${pct > 75 ? 'warning' : ''}`}
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </Card>
 
         <Card title="Risk preferences" subtitle="Saved locally for this preview">
@@ -83,29 +123,31 @@ export default function RiskManagement() {
             />
           </div>
 
-          <div
-            style={{
-              background: 'var(--warning-bg)',
-              border: '1px solid rgba(245, 158, 11, 0.3)',
-              borderRadius: 8,
-              padding: 14,
-              marginTop: 20,
-              display: 'flex',
-              gap: 12,
-              alignItems: 'flex-start',
-            }}
-          >
-            <AlertTriangle size={18} color="var(--warning)" style={{ flexShrink: 0, marginTop: 2 }} />
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>Concentration warning</div>
-              <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                Index derivatives exceed 60% of exposure.
+          {exposurePct > 60 && (
+            <div
+              style={{
+                background: 'var(--warning-bg)',
+                border: '1px solid rgba(245, 158, 11, 0.3)',
+                borderRadius: 8,
+                padding: 14,
+                marginTop: 20,
+                display: 'flex',
+                gap: 12,
+                alignItems: 'flex-start',
+              }}
+            >
+              <AlertTriangle size={18} color="var(--warning)" style={{ flexShrink: 0, marginTop: 2 }} />
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>Concentration warning</div>
+                <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                  Total exposure exceeds 60% of the limit.
+                </div>
               </div>
+              <span className="badge badge-warning" style={{ marginLeft: 'auto' }}>
+                <span className="badge-dot" /> Warning
+              </span>
             </div>
-            <span className="badge badge-warning" style={{ marginLeft: 'auto' }}>
-              <span className="badge-dot" /> Warning
-            </span>
-          </div>
+          )}
 
           <button className="btn btn-primary mt-4">
             Save preferences

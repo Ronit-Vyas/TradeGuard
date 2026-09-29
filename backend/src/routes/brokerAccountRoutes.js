@@ -6,6 +6,7 @@ import {
     getBrokerAccount,
     updateBrokerAccount,
     deleteBrokerAccount,
+    syncBrokerTrades,
 } from "../controllers/brokerAccountController.js";
 
 const router = express.Router();
@@ -19,5 +20,7 @@ router.get("/:id", getBrokerAccount);
 router.put("/:id", updateBrokerAccount);
 
 router.delete("/:id", deleteBrokerAccount);
+
+router.post("/:id/sync", syncBrokerTrades);
 
 export default router;

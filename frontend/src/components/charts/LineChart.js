@@ -8,10 +8,13 @@ export default function LineChart({ data, height = 240, formatValue = (v) => v }
   const innerH = height - pad.top - pad.bottom;
 
   const values = data.map((d) => d.value);
-  const min = Math.min(...values) * 0.98;
-  const max = Math.max(...values) * 1.02;
+  const rawMin = Math.min(...values);
+  const rawMax = Math.max(...values);
+  const padding = Math.max(Math.abs(rawMax - rawMin) * 0.05, 1);
+  const min = rawMin - padding;
+  const max = rawMax + padding;
 
-  const x = (i) => pad.left + (i / (data.length - 1)) * innerW;
+  const x = (i) => pad.left + (data.length <= 1 ? 0.5 : i / (data.length - 1)) * innerW;
   const y = (v) => pad.top + innerH - ((v - min) / (max - min)) * innerH;
 
   const path = data.map((d, i) => `${i === 0 ? 'M' : 'L'} ${x(i)} ${y(d.value)}`).join(' ');

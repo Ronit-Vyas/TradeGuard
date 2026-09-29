@@ -1,16 +1,53 @@
-import React, { useState, useMemo } from 'react';
-import { Card, StatCard, InfoBanner } from '../components/Card';
-import LineChart from '../components/charts/LineChart';
-import DonutChart from '../components/charts/DonutChart';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Card, StatCard } from '../components/Card';
 import { Info, X } from 'lucide-react';
-import {
-  mockTrades,
-  mockEquitySeries,
-  mockInstrumentDistribution,
-} from '../data/mockData';
+import { api } from '../api/client';
+import DonutChart from '../components/charts/DonutChart';
 
-function formatINR(n) {
-  return '₹' + n.toLocaleString('en-IN');
+const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#f97316', '#84cc16'];
+
+function formatINR(value) {
+  return `₹${Number(value || 0).toLocaleString('en-IN')}`;
+}
+
+function getTradeDate(trade) {
+  return trade.tradeTime || trade.executedAt || trade.createdAt || trade.updatedAt || null;
+}
+
+function formatDate(value) {
+  if (!value) return '—';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+
+  return date.toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+  });
+}
+
+function formatTime(value) {
+  if (!value) return '';
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  return date.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function getId(trade) {
+  return trade._id || trade.tradeId || trade.orderId || 'Execution';
+}
+
+function getQuantity(trade) {
+  return trade.quantity ?? '—';
+}
+
+function getPrice(trade) {
+  return trade.executedPrice ?? trade.averagePrice ?? trade.price;
 }
 
 export default function Overview() {
@@ -18,16 +55,106 @@ export default function Overview() {
   const [drawerTrade, setDrawerTrade] = useState(null);
   const [showBanner, setShowBanner] = useState(true);
 
-  const recent = mockTrades.slice(0, 5);
+  const [summary, setSummary] = useState(null);
+  const [trades, setTrades] = useState([]);
+  const [accounts, setAccounts] = useState([]);
+  const [instrumentDistribution, setInstrumentDistribution] = useState([]);
 
-  const stats = useMemo(() => ({
-    totalPnl: 42620,
-    todayPnl: 3560,
-    totalTrades: 207,
-    winRate: '63.4%',
-    profitFactor: 1.84,
-    connectedBrokers: '3 of 4',
-  }), []);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadOverview() {
+      setLoading(true);
+      setError('');
+
+      try {
+        const [summaryResponse, tradesResponse, accountsResponse, instrumentResponse] =
+          await Promise.all([
+            api.tradeSummary(),
+            api.listTrades(),
+            api.listBrokerAccounts(),
+            api.instrumentDistribution(),
+          ]);
+
+        if (!active) return;
+
+        setSummary(summaryResponse?.data || null);
+        setTrades(
+          Array.isArray(tradesResponse?.data) ? tradesResponse.data : []
+        );
+        setAccounts(
+          Array.isArray(accountsResponse?.data) ? accountsResponse.data : []
+        );
+        setInstrumentDistribution(instrumentResponse?.data?.distribution || []);
+      } catch (err) {
+        if (active) {
+          setError(
+            err?.response?.data?.message ||
+              err?.message ||
+              'Unable to load your saved trading data.'
+          );
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    loadOverview();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Apply the selected date range to the execution list.
+  // The summary cards below remain all-time totals returned by the API.
+  const filteredTrades = useMemo(() => {
+    const now = new Date();
+    const days = range === '7d' ? 7 : range === '90d' ? 90 : 30;
+    const cutoff = new Date(now);
+    cutoff.setDate(cutoff.getDate() - days);
+
+    return trades
+      .filter((trade) => {
+        const value = getTradeDate(trade);
+        if (!value) return false;
+
+        const date = new Date(value);
+        return !Number.isNaN(date.getTime()) && date >= cutoff && date <= now;
+      })
+      .sort((a, b) => {
+        const dateA = new Date(getTradeDate(a) || 0).getTime();
+        const dateB = new Date(getTradeDate(b) || 0).getTime();
+        return dateB - dateA;
+      });
+  }, [trades, range]);
+
+  const recent = filteredTrades.slice(0, 5);
+
+  const totalExecutions =
+    summary?.totalExecutions ?? trades.length;
+
+  const buyExecutions =
+    summary?.buyExecutions ??
+    trades.filter((trade) => trade.transactionType === 'BUY').length;
+
+  const sellExecutions =
+    summary?.sellExecutions ??
+    trades.filter((trade) => trade.transactionType === 'SELL').length;
+
+  const totalQuantity =
+    summary?.totalQuantity ??
+    trades.reduce((total, trade) => total + Number(trade.quantity || 0), 0);
+
+  const brokerAccountCount =
+    summary?.brokerAccounts ?? accounts.length;
+
+  const distinctSymbols =
+    summary?.distinctSymbols ??
+    new Set(trades.map((trade) => trade.symbol).filter(Boolean)).size;
 
   return (
     <>
@@ -35,13 +162,14 @@ export default function Overview() {
         <div>
           <h1 className="page-title">Portfolio overview</h1>
           <p className="page-description">
-            A consolidated view of your illustrative trading performance.
+            A consolidated view of executions saved in your TradeGuard database.
           </p>
         </div>
+
         <select
           className="filter-select"
           value={range}
-          onChange={(e) => setRange(e.target.value)}
+          onChange={(event) => setRange(event.target.value)}
         >
           <option value="7d">Last 7 days</option>
           <option value="30d">Last 30 days</option>
@@ -52,9 +180,15 @@ export default function Overview() {
       {showBanner && (
         <div className="info-banner" style={{ position: 'relative' }}>
           <Info size={15} />
-          <span>Illustrative sample data — not live broker information.</span>
+          <span>
+            Dashboard values are loaded from your saved TradeGuard records.
+            P&amp;L and risk metrics are not shown until they are calculated
+            from matched trades and configured risk limits.
+          </span>
+
           <button
             className="icon-btn"
+            aria-label="Dismiss information"
             style={{ marginLeft: 'auto', width: 24, height: 24 }}
             onClick={() => setShowBanner(false)}
           >
@@ -63,160 +197,256 @@ export default function Overview() {
         </div>
       )}
 
-      <div className="stat-grid">
-        <StatCard
-          label="Total P&L"
-          value={formatINR(stats.totalPnl)}
-          change="+5.1% vs prior period"
-          changeType="positive"
-        />
-        <StatCard
-          label="Today's P&L"
-          value={formatINR(stats.todayPnl)}
-          change="+0.8%"
-          changeType="positive"
-        />
-        <StatCard
-          label="Total trades"
-          value={stats.totalTrades}
-          change="14 more"
-          changeType="neutral"
-        />
-        <StatCard
-          label="Win rate"
-          value={stats.winRate}
-          change="+2.3 pp"
-          changeType="positive"
-        />
-        <StatCard
-          label="Profit factor"
-          value={stats.profitFactor}
-          change="Healthy"
-          changeType="positive"
-        />
-        <StatCard
-          label="Connected brokers"
-          value={stats.connectedBrokers}
-          change="1 needs action"
-          changeType="neutral"
-        />
-      </div>
+      {error && (
+        <div className="info-banner" role="alert">
+          Could not load account data: {error}
+        </div>
+      )}
 
-      <div className="grid-2" style={{ marginBottom: 20 }}>
-        <Card
-          title="Equity performance"
-          subtitle="Cumulative account equity across sample broker accounts"
-        >
-          <LineChart data={mockEquitySeries} />
-        </Card>
+      {loading ? (
+        <p>Loading your saved trading data…</p>
+      ) : (
+        <>
+          <div className="stat-grid">
+            <StatCard
+              label="Saved executions"
+              value={totalExecutions}
+              change="All-time database total"
+              changeType="neutral"
+            />
+            <StatCard
+              label="Buy executions"
+              value={buyExecutions}
+              change="All-time database total"
+              changeType="neutral"
+            />
+            <StatCard
+              label="Sell executions"
+              value={sellExecutions}
+              change="All-time database total"
+              changeType="neutral"
+            />
+            <StatCard
+              label="Executed quantity"
+              value={Number(totalQuantity).toLocaleString('en-IN')}
+              change="All-time database total"
+              changeType="neutral"
+            />
+            <StatCard
+              label="Broker accounts"
+              value={brokerAccountCount}
+              change="Saved accounts"
+              changeType="neutral"
+            />
+            <StatCard
+              label="Symbols traded"
+              value={distinctSymbols}
+              change="Distinct saved symbols"
+              changeType="neutral"
+            />
+          </div>
 
-        <Card
-          title="Instrument distribution"
-          subtitle="Share of total executed trades"
-        >
-          <DonutChart data={mockInstrumentDistribution} />
-        </Card>
-      </div>
+          <div className="grid-2" style={{ marginBottom: 20 }}>
+            <Card
+              title="Equity performance"
+              subtitle="Equity curve will appear when portfolio-level P&L history is available"
+            >
+              <div
+                style={{
+                  minHeight: 220,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'var(--text-muted)',
+                  textAlign: 'center',
+                  padding: 20,
+                }}
+              >
+                No equity history available yet.
+                <br />
+                Individual executions are not enough to construct an accurate
+                account equity curve.
+              </div>
+            </Card>
 
-      <div className="grid-2">
-        <Card title="Recent trades" subtitle="Select a row to inspect its execution details" padded={false}>
-          <div className="table-container">
-            <table>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Symbol</th>
-                  <th>Side</th>
-                  <th className="text-right">Qty</th>
-                  <th className="text-right">Avg. price</th>
-                  <th className="text-right">P&L</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recent.map((t) => (
-                  <tr key={t.id} onClick={() => setDrawerTrade(t)}>
-                    <td>
-                      <div className="text-primary">
-                        {new Date(t.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
-                      </div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                        {new Date(t.date).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
-                      </div>
-                    </td>
-                    <td>
-                      <div className="text-primary">{t.symbol}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{t.segment}</div>
-                    </td>
-                    <td>
-                      <span className={`badge ${t.side === 'BUY' ? 'badge-success' : 'badge-danger'}`}>
-                        {t.side}
-                      </span>
-                    </td>
-                    <td className="text-right mono">{t.qty}</td>
-                    <td className="text-right mono">₹{t.avgPrice.toLocaleString('en-IN')}</td>
-                    <td className="text-right mono" style={{ color: t.pnl >= 0 ? 'var(--success)' : 'var(--danger)', fontWeight: 500 }}>
-                      {t.pnl >= 0 ? '+' : ''}{formatINR(t.pnl)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <Card
+              title="Instrument distribution"
+              subtitle="Executed trades grouped by equity product, futures and options"
+            >
+              {instrumentDistribution.length === 0 ? (
+                <div style={{ minHeight: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', textAlign: 'center', padding: 20 }}>
+                  No instrument classification available. Check saved segment/product fields.
+                </div>
+              ) : (
+                <DonutChart
+                  data={instrumentDistribution.map((item, index) => ({
+                    label: item.label,
+                    value: item.value,
+                    color: CHART_COLORS[index % CHART_COLORS.length],
+                  }))}
+                  size={200}
+                  thickness={28}
+                />
+              )}
+            </Card>
           </div>
-        </Card>
 
-        <Card title="Risk summary" subtitle="Based on configured demo limits">
-          <div className="progress-row">
-            <div className="progress-header">
-              <span style={{ color: 'var(--text-secondary)' }}>Daily loss used</span>
-              <span className="mono">₹8,408 of ₹15,000</span>
-            </div>
-            <div className="progress-bar">
-              <div className="progress-fill success" style={{ width: '56%' }} />
-            </div>
+          <div className="grid-2">
+            <Card
+              title="Recent trades"
+              subtitle={`Saved executions from the selected ${range} period. Select a row for details.`}
+              padded={false}
+            >
+              <div className="table-container">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Symbol</th>
+                      <th>Side</th>
+                      <th className="text-right">Qty</th>
+                      <th className="text-right">Execution price</th>
+                      <th>Broker</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {recent.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} style={{ textAlign: 'center', padding: 24 }}>
+                          No saved executions found for this period.
+                        </td>
+                      </tr>
+                    ) : (
+                      recent.map((trade) => {
+                        const tradeDate = getTradeDate(trade);
+                        const side = trade.transactionType;
+
+                        return (
+                          <tr
+                            key={trade._id || trade.tradeId || trade.orderId}
+                            onClick={() => setDrawerTrade(trade)}
+                            style={{ cursor: 'pointer' }}
+                          >
+                            <td>
+                              <div className="text-primary">
+                                {formatDate(tradeDate)}
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: 11,
+                                  color: 'var(--text-muted)',
+                                }}
+                              >
+                                {formatTime(tradeDate)}
+                              </div>
+                            </td>
+
+                            <td>
+                              <div className="text-primary">
+                                {trade.symbol || '—'}
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: 11,
+                                  color: 'var(--text-muted)',
+                                }}
+                              >
+                                {trade.segment || trade.exchange || '—'}
+                              </div>
+                            </td>
+
+                            <td>
+                              <span
+                                className={`badge ${
+                                  side === 'BUY'
+                                    ? 'badge-success'
+                                    : side === 'SELL'
+                                    ? 'badge-danger'
+                                    : ''
+                                }`}
+                              >
+                                {side || '—'}
+                              </span>
+                            </td>
+
+                            <td className="text-right mono">
+                              {getQuantity(trade)}
+                            </td>
+
+                            <td className="text-right mono">
+                              {getPrice(trade) == null
+                                ? '—'
+                                : formatINR(getPrice(trade))}
+                            </td>
+
+                            <td>{trade.broker || '—'}</td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+
+            <Card
+              title="Risk summary"
+              subtitle="Risk metrics require configured limits and portfolio-level calculations"
+            >
+              <div
+                style={{
+                  minHeight: 190,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'center',
+                  gap: 10,
+                }}
+              >
+                <div style={{ fontSize: 14, fontWeight: 600 }}>
+                  Risk metrics not available yet
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                  Daily loss used, capital exposed, and drawdown will be
+                  displayed after risk limits and the required position/P&amp;L
+                  calculations are connected to the backend.
+                </div>
+              </div>
+            </Card>
           </div>
-          <div className="progress-row">
-            <div className="progress-header">
-              <span style={{ color: 'var(--text-secondary)' }}>Capital exposed</span>
-              <span className="mono">₹1.92L of ₹4.00L</span>
-            </div>
-            <div className="progress-bar">
-              <div className="progress-fill" style={{ width: '48%' }} />
-            </div>
-          </div>
-          <div className="progress-row">
-            <div className="progress-header">
-              <span style={{ color: 'var(--text-secondary)' }}>Current drawdown</span>
-              <span className="mono">3.2% of 8.0%</span>
-            </div>
-            <div className="progress-bar">
-              <div className="progress-fill warning" style={{ width: '40%' }} />
-            </div>
-          </div>
-          <div style={{ marginTop: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Overall status</span>
-            <span className="badge badge-success">
-              <span className="badge-dot" /> Healthy
-            </span>
-          </div>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8 }}>
-            Within configured limits
-          </div>
-        </Card>
-      </div>
+        </>
+      )}
 
       {drawerTrade && (
         <>
-          <div className="drawer-overlay" onClick={() => setDrawerTrade(null)} />
+          <div
+            className="drawer-overlay"
+            onClick={() => setDrawerTrade(null)}
+          />
+
           <div className="drawer">
             <div className="drawer-header">
               <div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Trade details</div>
-                <div style={{ fontSize: 15, fontWeight: 600 }}>{drawerTrade.id}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  Illustrative execution record
+                <div
+                  style={{ fontSize: 12, color: 'var(--text-muted)' }}
+                >
+                  Execution details
+                </div>
+                <div style={{ fontSize: 15, fontWeight: 600 }}>
+                  {getId(drawerTrade)}
+                </div>
+                <div
+                  style={{ fontSize: 12, color: 'var(--text-muted)' }}
+                >
+                  Saved TradeGuard execution record
                 </div>
               </div>
-              <button className="icon-btn" onClick={() => setDrawerTrade(null)}>
+
+              <button
+                className="icon-btn"
+                aria-label="Close trade details"
+                onClick={() => setDrawerTrade(null)}
+              >
                 <X size={18} />
               </button>
             </div>
@@ -224,32 +454,42 @@ export default function Overview() {
             {[
               ['Symbol', drawerTrade.symbol],
               ['Broker', drawerTrade.broker],
-              ['Side', drawerTrade.side],
-              ['Quantity', drawerTrade.qty],
-              ['Average price', `₹${drawerTrade.avgPrice.toLocaleString('en-IN')}`],
+              ['Side', drawerTrade.transactionType],
+              ['Quantity', drawerTrade.quantity],
+              [
+                'Execution price',
+                getPrice(drawerTrade) == null
+                  ? '—'
+                  : formatINR(getPrice(drawerTrade)),
+              ],
               ['Order type', drawerTrade.orderType],
-              ['Segment', drawerTrade.segment],
-              ['Executed', new Date(drawerTrade.date).toLocaleString('en-GB')],
+              ['Segment', drawerTrade.segment || drawerTrade.exchange],
+              ['Order ID', drawerTrade.orderId],
+              ['Trade ID', drawerTrade.tradeId],
+              ['Status', drawerTrade.status],
+              [
+                'Executed / saved',
+                getTradeDate(drawerTrade)
+                  ? new Date(getTradeDate(drawerTrade)).toLocaleString('en-GB')
+                  : '—',
+              ],
             ].map(([label, value]) => (
               <div className="detail-row" key={label}>
                 <span className="detail-label">{label}</span>
-                <span className="detail-value">{value}</span>
+                <span className="detail-value">{value ?? '—'}</span>
               </div>
             ))}
 
-            <div style={{ marginTop: 20 }}>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 4 }}>
-                Realized P&L
-              </div>
-              <div
-                style={{
-                  fontSize: 20,
-                  fontWeight: 600,
-                  color: drawerTrade.pnl >= 0 ? 'var(--success)' : 'var(--danger)',
-                }}
-              >
-                {drawerTrade.pnl >= 0 ? '+' : ''}{formatINR(drawerTrade.pnl)}
-              </div>
+            <div
+              style={{
+                marginTop: 20,
+                fontSize: 12,
+                color: 'var(--text-muted)',
+              }}
+            >
+              Realized P&amp;L is not displayed for an individual execution.
+              It must be calculated by matching relevant buy and sell fills
+              using the selected accounting method.
             </div>
           </div>
         </>

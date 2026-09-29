@@ -11,23 +11,23 @@ export async function login(req, res) {
     try{
         const {email , password} = req.body
 
-       const user = await User.findOne({email});
+        const user = await User.findOne({email});
 
-       if(!user){
-        return res.status(404).json({message : "User not found"})
-       }
+        if(!user){
+            return res.status(404).json({message : "User not found"})
+        }
 
-       const isPasswordCorrect = await bcrypt.compare(password , user.password)
-       
-       if(!isPasswordCorrect) return res.status(400).json({message : "Invalid credentials"})
-       
-        const token = jwt.sign(
-            {userId : user._id , email : user.email},
-            process.env.JWT_SECRET,
-            {expiresIn : "1d"}
-        )
-       
-        res.status(200).json({token, user: {id: user._id, username: user.username, email: user.email}});
+        const isPasswordCorrect = await bcrypt.compare(password , user.password)
+        
+        if(!isPasswordCorrect) return res.status(400).json({message : "Invalid credentials"})
+
+         const token = jwt.sign(
+             {userId : user._id , email : user.email},
+             process.env.JWT_SECRET,
+             {expiresIn : "1d"}
+         )
+        
+         res.status(200).json({token, user: {id: user._id, username: user.username, email: user.email}});
     }
     catch(error){
         console.log("Error to get all User",error)
@@ -41,81 +41,81 @@ export async function login(req, res) {
 export async function forgotPassword(req,res) {
     
     try{
-       const {email} = req.body
-       
-       const existingUser = await User.findOne({email});
+        const {email} = req.body
+        
+        const existingUser = await User.findOne({email});
 
-       console.log(existingUser)
-
-
-     
-     console.log("User found")
-     console.log(process.env.EMAIL_USER)
-      console.log(process.env.RESET_URL)
-
-      const token = jwt.sign(
-        {userId : existingUser._id , email : existingUser.email},
-        process.env.JWT_SECRET,
-        {expiresIn : "15m"}
-    )
-     const resetLink = `${process.env.RESET_URL}/${token}`;
-
-      console.log("Reset link generated:", resetLink); // Log the reset link for debugging
+        console.log(existingUser)
 
 
-      await transporter.sendMail({
-       from: process.env.EMAIL_USER,
-       to: email,       // ← FROM DATABASE
-       subject: "Reset your password",
-       html: `
-          <h2>Password Reset</h2>
-          <p>Hello ${existingUser.username},</p>
-          <p>Click the link below to reset your password.</p>
-          <p>Your Reset Link is : ${resetLink}</p>
-          <p>This link expires in 15 minutes.</p>
-    `
-       });
+      
+      console.log("User found")
+      console.log(process.env.EMAIL_USER)
+       console.log(process.env.RESET_URL)
 
-       
-       return res.status(200).json({message: "If the account exists, a reset email has been sent." , token : "token"});
-     
+       const token = jwt.sign(
+         {userId : existingUser._id , email : existingUser.email},
+         process.env.JWT_SECRET,
+         {expiresIn : "15m"}
+     )
+      const resetLink = `${process.env.RESET_URL}/${token}`;
+
+       console.log("Reset link generated:", resetLink); // Log the reset link for debugging
+
+       await transporter.sendMail({
+        from: process.env.EMAIL_USER,
+        to: email,       // ← FROM DATABASE
+        subject: "Reset your password",
+        html: `
+           <h2>Password Reset</h2>
+           <p>Hello ${existingUser.username},</p>
+           <p>Click the link below to reset your password.</p>
+           <p>Your Reset Link is : ${resetLink}</p>
+           <p>This link expires in 15 minutes.</p>
+     `
+        });
+
+        
+        return res.status(200).json({message: "If the account exists, a reset email has been sent." , token : "token"});
+      
 
     }catch(error){
         console.log(error.errors)
         res.status(500).json({message : "Server Error occured"});
     }
-    
+     
 }
+
 
 export async function register(req,res) {
    
     try{
-       
-       const {username,email,password} = req.body
-       
-       const existingUser = await User.findOne({email});
-       
-       if(existingUser){
-        return res.status(400).json({message : "User already exists"})
-       }
-       
-       const lastUser = await User.findOne().sort({ userId: -1 });
+        
+        const {username,email,password} = req.body
+        
+        const existingUser = await User.findOne({email});
+        
+        if(existingUser){
+            return res.status(400).json({message : "User already exists"})
+        }
+        
+        const lastUser = await User.findOne().sort({ userId: -1 });
 
-        const nextUserId = lastUser && Number.isFinite(lastUser.userId)
+         const nextUserId = lastUser && Number.isFinite(lastUser.userId)
         ? lastUser.userId + 1
         : 1;
-       const newUser = new User({userId: nextUserId, username, email, password});
-       
-       await newUser.save();
-            
-       const token = jwt.sign(
-        {userId : newUser._id , email : newUser.email},
-        process.env.JWT_SECRET,
-        {expiresIn : "1d"}
-    )
-    console.log("Everythong is fine, token generated:", token); // Log the generated token for debugging
+        const newUser = new User({userId: nextUserId, username, email, password});
         
-       res.status(201).json({token, user: {id: newUser.userId, username: newUser.username, email: newUser.email}});
+        await newUser.save();
+             
+        const token = jwt.sign(
+         {userId : newUser._id , email : newUser.email},
+         process.env.JWT_SECRET,
+         {expiresIn : "1d"}
+     )
+    console.log("Everythong is fine, token generated:", token); // Log the generated token for debugging
+         
+        res.status(201).json({token, user: {id: newUser._id, username: newUser.username, email: newUser.email}});
 
     }catch(error){
         console.log(error)

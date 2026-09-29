@@ -1,25 +1,55 @@
-import React, { useState } from 'react';
-import { Card, InfoBanner, StatCard } from '../components/Card';
+import React, { useEffect, useState } from 'react';
+import { Card, StatCard } from '../components/Card';
 import LineChart from '../components/charts/LineChart';
 import { GroupedBarChart, SimpleBarChart } from '../components/charts/BarChart';
 import { Info, X } from 'lucide-react';
-import {
-  mockEquitySeries,
-  mockWeeklyPnL,
-  mockBrokerPnL,
-  mockDailyActivity,
-} from '../data/mockData';
+import { api } from '../api/client';
 
 export default function Analytics() {
   const [range, setRange] = useState('30d');
   const [showBanner, setShowBanner] = useState(true);
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadAnalytics() {
+      setLoading(true);
+      setError('');
+      try {
+        const response = await api.tradeAnalytics(range);
+        if (active) {
+          setData(response?.data || null);
+        }
+      } catch (err) {
+        if (active) {
+          setError(err.message || 'Failed to load analytics');
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    loadAnalytics();
+    return () => { active = false; };
+  }, [range]);
+
+  const equitySeries = data?.equitySeries || [];
+  const weeklyPnL = data?.weeklyPnL || [];
+  const brokerPnL = data?.brokerPnL || [];
+  const dailyActivity = data?.dailyActivity || [];
+
+  const avgWin = Number(data?.averageWin || 0);
+  const avgLoss = Number(data?.averageLoss || 0);
 
   return (
     <>
       <div className="page-header page-header-row">
         <div>
           <h1 className="page-title">Performance analytics</h1>
-          <p className="page-description">Understand patterns behind the sample results.</p>
+          <p className="page-description">Understand patterns behind your trading results.</p>
         </div>
         <select className="filter-select" value={range} onChange={(e) => setRange(e.target.value)}>
           <option value="7d">Last 7 days</option>
@@ -31,53 +61,91 @@ export default function Analytics() {
       {showBanner && (
         <div className="info-banner" style={{ position: 'relative' }}>
           <Info size={15} />
-          <span>Illustrative sample data — not live broker information.</span>
+          <span>Analytics are calculated from your saved TradeGuard trade records.</span>
           <button className="icon-btn" style={{ marginLeft: 'auto', width: 24, height: 24 }} onClick={() => setShowBanner(false)}>
             <X size={14} />
           </button>
         </div>
       )}
 
-      <div className="stat-grid">
-        <StatCard label="Average win" value="₹4,820" change="1.74× avg loss" changeType="positive" />
-        <StatCard label="Average loss" value="₹2,770" change="Controlled" changeType="neutral" />
-        <StatCard label="Best instrument" value="NIFTY 50" change="+₹18.4K" changeType="positive" />
-        <StatCard label="Best trading day" value="Thursday" change="52 trades" changeType="neutral" />
-      </div>
+      {error && (
+        <div className="info-banner" role="alert">
+          Could not load analytics: {error}
+        </div>
+      )}
 
-      <div className="grid-2" style={{ marginBottom: 20 }}>
-        <Card title="P&L over time" subtitle="Cumulative sample account equity">
-          <LineChart data={mockEquitySeries} height={280} />
-        </Card>
+      {loading ? (
+        <p>Loading analytics…</p>
+      ) : (
+        <>
+          <div className="stat-grid">
+            <StatCard label="Average win" value={avgWin > 0 ? `₹${Math.round(avgWin).toLocaleString('en-IN')}` : '—'} change="Across brokers" changeType="positive" />
+            <StatCard label="Average loss" value={avgLoss ? `₹${Math.round(avgLoss).toLocaleString('en-IN')}` : '—'} change="Per FIFO-matched losing close" changeType="neutral" />
+            <StatCard label="Closed trades" value={data?.closedTrades ?? 0} change={`${data?.winningTrades || 0} wins · ${data?.losingTrades || 0} losses`} changeType="neutral" /> 
+            <StatCard label="Net realized P&L" value={`₹${Math.round(data?.realizedPnL || 0).toLocaleString('en-IN')}`} change="FIFO matched closes" changeType={(data?.realizedPnL || 0)>=0?"positive":"negative"} /> 
+            <StatCard label="Broker performance" value={brokerPnL.length > 0 ? brokerPnL.reduce((a, b) => a.value > b.value ? a : b).name : '—'} change={brokerPnL.length > 0 ? `₹${Math.round(brokerPnL.reduce((a, b) => a.value > b.value ? a : b).value).toLocaleString('en-IN')}` : ''} changeType="positive" />
+            <StatCard label="Most active day" value={dailyActivity.length > 0 ? dailyActivity.reduce((a, b) => a.value > b.value ? a : b).day : '—'} change={dailyActivity.length > 0 ? `${dailyActivity.reduce((a, b) => a.value > b.value ? a : b).value} trades` : ''} changeType="neutral" />
+          </div>
 
-        <Card title="Win and loss distribution" subtitle="Gross weekly outcomes">
-          <GroupedBarChart
-            data={mockWeeklyPnL}
-            series={[
-              { key: 'wins', label: 'Gross wins', color: '#10b981' },
-              { key: 'losses', label: 'Gross losses', color: '#ef4444' },
-            ]}
-          />
-        </Card>
-      </div>
+          <div className="grid-2" style={{ marginBottom: 20 }}>
+            <Card title="P&L over time" subtitle="Cumulative realized P&L by execution trade date">
+              {equitySeries.length > 0 ? (
+                <LineChart data={equitySeries} height={280} />
+              ) : (
+                <div style={{ minHeight: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', textAlign: 'center', padding: 20 }}>
+                  No equity history available yet.
+                </div>
+              )}
+            </Card>
 
-      <div className="grid-2">
-        <Card title="Performance by broker" subtitle="Net P&L contribution">
-          <SimpleBarChart
-            data={mockBrokerPnL.map((b) => ({ label: b.name, value: b.value }))}
-            color="#3b82f6"
-            valueFormatter={(v) => `₹${v.toLocaleString('en-IN')}`}
-          />
-        </Card>
+            <Card title="Win and loss distribution" subtitle="Gross weekly outcomes">
+              {weeklyPnL.length > 0 ? (
+                <GroupedBarChart
+                  data={weeklyPnL}
+                  series={[
+                    { key: 'wins', label: 'Gross wins', color: '#10b981' },
+                    { key: 'losses', label: 'Gross losses', color: '#ef4444' },
+                  ]}
+                />
+              ) : (
+                <div style={{ minHeight: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', textAlign: 'center', padding: 20 }}>
+                  No weekly data available.
+                </div>
+              )}
+            </Card>
+          </div>
 
-        <Card title="Trading activity by day" subtitle="Executed trade count">
-          <SimpleBarChart
-            data={mockDailyActivity}
-            color="#d97706"
-            valueFormatter={(v) => `${v} trades`}
-          />
-        </Card>
-      </div>
+          <div className="grid-2">
+            <Card title="Performance by broker" subtitle="Net P&L contribution">
+              {brokerPnL.length > 0 ? (
+                <SimpleBarChart
+                  data={brokerPnL.map((b) => ({ label: b.name, value: b.value }))}
+                  color="#3b82f6"
+                  valueFormatter={(v) => `₹${v.toLocaleString('en-IN')}`}
+                />
+              ) : (
+                <div style={{ minHeight: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', textAlign: 'center', padding: 20 }}>
+                  No broker performance data.
+                </div>
+              )}
+            </Card>
+
+            <Card title="Trading activity by day" subtitle="Executed trade count">
+              {dailyActivity.length > 0 ? (
+                <SimpleBarChart
+                  data={dailyActivity}
+                  color="#d97706"
+                  valueFormatter={(v) => `${v} trades`}
+                />
+              ) : (
+                <div style={{ minHeight: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', textAlign: 'center', padding: 20 }}>
+                  No activity data.
+                </div>
+              )}
+            </Card>
+          </div>
+        </>
+      )}
     </>
   );
 }

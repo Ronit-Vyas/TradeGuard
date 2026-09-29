@@ -25,10 +25,9 @@ export function AuthProvider({ children }) {
   const login = useCallback(async (email, password) => {
     const data = await api.login(email, password);
     localStorage.setItem('tg_token', data.token);
-    // Normalize user object — backend may return id or userId
     const normalizedUser = {
-      id: data.user.id || data.user._id || data.user.userId,
-      userId: data.user.userId ?? data.user.id ?? data.user._id,
+      id: data.user._id || data.user.id,
+      userId: data.user._id || data.user.id,
       username: data.user.username,
       email: data.user.email,
     };
@@ -42,8 +41,8 @@ export function AuthProvider({ children }) {
     const data = await api.register(username, email, password);
     localStorage.setItem('tg_token', data.token);
     const normalizedUser = {
-      id: data.user.id || data.user._id || data.user.userId,
-      userId: data.user.userId ?? data.user.id ?? data.user._id,
+      id: data.user._id || data.user.id,
+      userId: data.user._id || data.user.id,
       username: data.user.username,
       email: data.user.email,
     };

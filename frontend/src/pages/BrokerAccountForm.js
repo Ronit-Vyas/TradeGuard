@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Eye, EyeOff, ArrowLeft } from 'lucide-react';
 import { Card } from '../components/Card';
@@ -26,7 +26,45 @@ export default function BrokerAccountForm() {
   });
   const [show, setShow] = useState({});
   const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(isEdit);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!isEdit) return;
+
+    let active = true;
+
+    async function loadAccount() {
+      setFetching(true);
+      try {
+        const response = await api.getBrokerAccount(id);
+        if (active) {
+          const acc = response?.data || response;
+          setForm((f) => ({
+            ...f,
+            broker: acc.broker || f.broker,
+            clientId: acc.credentials?.clientId || '',
+            isActive: acc.isActive ?? true,
+            // Sensitive fields are never returned by the API — leave blank
+            apiKey: '',
+            apiSecret: '',
+            accessToken: '',
+            refreshToken: '',
+            tokenExpiresAt: '',
+          }));
+        }
+      } catch (err) {
+        if (active) {
+          setError(err.message || 'Failed to load account');
+        }
+      } finally {
+        if (active) setFetching(false);
+      }
+    }
+
+    loadAccount();
+    return () => { active = false; };
+  }, [id, isEdit]);
 
   function update(key, value) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -57,7 +95,7 @@ export default function BrokerAccountForm() {
         toast.push('Broker account updated', 'success');
       } else {
         const payload = {
-          userId: user?.userId,
+          userId: user?.id,
           broker: form.broker,
           credentials: { clientId: form.clientId },
         };
@@ -98,6 +136,22 @@ export default function BrokerAccountForm() {
           </button>
         </div>
       </div>
+    );
+  }
+
+  if (fetching) {
+    return (
+      <>
+        <div className="page-header">
+          <button className="btn btn-ghost btn-sm" onClick={() => navigate(-1)} style={{ marginBottom: 12 }}>
+            <ArrowLeft size={14} /> Back
+          </button>
+          <h1 className="page-title">Edit broker account</h1>
+        </div>
+        <Card>
+          <p>Loading account data…</p>
+        </Card>
+      </>
     );
   }
 
