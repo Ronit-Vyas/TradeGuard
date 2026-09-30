@@ -1,3 +1,10 @@
+// ======================================================
+// MAP TRADE
+// Works for both:
+// 1. Historical Trades API
+// 2. Get Trades For Day API
+// ======================================================
+
 const mapUpstoxTrade = (trade) => {
 
     if (!trade) {
@@ -15,48 +22,78 @@ const mapUpstoxTrade = (trade) => {
 
     return {
 
+        // Unique execution/trade ID
         tradeId:
             String(trade.trade_id),
 
 
+        // Historical API does not provide order_id.
+        // Today's Trades API does.
         orderId:
-            null,
+            trade.order_id
+                ? String(trade.order_id)
+                : null,
 
 
         broker:
             "UPSTOX",
 
 
+        // Historical API:
+        // symbol / scrip_name
+        //
+        // Today's API:
+        // trading_symbol
         symbol:
+            trade.trading_symbol ||
             trade.symbol ||
             trade.scrip_name ||
             null,
 
 
         transactionType:
-            trade.transaction_type,
+            trade.transaction_type || null,
 
 
         quantity:
             Number(trade.quantity || 0),
 
 
+        // Historical API:
+        // price
+        //
+        // Today's API:
+        // average_price
         price:
-            Number(trade.price || 0),
+            Number(
+                trade.average_price ??
+                trade.price ??
+                0
+            ),
 
 
         status:
             "COMPLETE",
 
 
-        orderType: //dom't peovided by broker api
-            undefined,
+        // Historical trade API doesn't provide
+        // order type.
+        //
+        // Today's trade API may provide it.
+        orderType:
+            trade.order_type || undefined,
 
 
         brokerResponse:
             trade
     };
 };
+
+
+// ======================================================
+// MAP ORDER
+// Used by Portfolio WebSocket
+// ======================================================
 
 const mapUpstoxOrder = (order) => {
 
@@ -66,40 +103,70 @@ const mapUpstoxOrder = (order) => {
         );
     }
 
+
     return {
 
-        broker: "UPSTOX",
+        broker:
+            "UPSTOX",
+
 
         orderId:
-            order.order_id || null,
+            order.order_id
+                ? String(order.order_id)
+                : null,
+
 
         symbol:
-            order.trading_symbol || null,
+            order.trading_symbol ||
+            order.symbol ||
+            null,
+
 
         transactionType:
-            order.transaction_type || null,
+            order.transaction_type ||
+            null,
+
 
         quantity:
             Number(order.quantity || 0),
 
-        executedPrice:
+
+        price:
             Number(
-                order.average_price ||
-                order.price ||
+                order.average_price ??
+                order.price ??
                 0
             ),
 
+
+        averagePrice:
+            Number(
+                order.average_price ??
+                order.price ??
+                0
+            ),
+
+
         orderType:
-            order.order_type || undefined,
+            order.order_type ||
+            undefined,
+
 
         status:
             mapUpstoxOrderStatus(
                 order.status
             ),
 
-        brokerResponse: order
+
+        brokerResponse:
+            order
     };
 };
+
+
+// ======================================================
+// MAP ORDER STATUS
+// ======================================================
 
 const mapUpstoxOrderStatus = (status) => {
 
@@ -110,23 +177,32 @@ const mapUpstoxOrderStatus = (status) => {
 
     const statusMap = {
 
-        complete: "COMPLETE",
+        complete:
+            "COMPLETE",
 
-        completed: "COMPLETE",
+        completed:
+            "COMPLETE",
 
-        cancelled: "CANCELLED",
+        cancelled:
+            "CANCELLED",
 
-        rejected: "REJECTED",
+        rejected:
+            "REJECTED",
 
-        pending: "PENDING",
+        pending:
+            "PENDING",
 
-        open: "PENDING",
+        open:
+            "PENDING",
 
-        "trigger pending": "PENDING",
+        "trigger pending":
+            "PENDING",
 
-        "modify pending": "TRANSIT",
+        "modify pending":
+            "TRANSIT",
 
-        "cancel pending": "TRANSIT"
+        "cancel pending":
+            "TRANSIT"
     };
 
 

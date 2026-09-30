@@ -1,3 +1,4 @@
+
 import { createRequire } from "node:module";
 import TradeRecord from "../../models/TradeRecord.js";
 import UpstoxAdaptor from "./UpstoxAdaptor.js";
@@ -47,6 +48,7 @@ const connectUpstoxPortfolioStream = async ({
     }
 
     const adaptor = new UpstoxAdaptor(accessToken);
+
     // 3. Configure SDK authentication
     const defaultClient =
         UpstoxClient.ApiClient.instance;
@@ -57,7 +59,6 @@ const connectUpstoxPortfolioStream = async ({
     oauth.accessToken = accessToken;
 
     // 4. Create the Portfolio WebSocket streamer
-    // Enable orders, positions, holdings and GTT updates
     const streamer =
         new UpstoxClient.PortfolioDataStreamer(
             true,  // order updates
@@ -74,65 +75,93 @@ const connectUpstoxPortfolioStream = async ({
     });
 
     streamer.on("message", async (data) => {
-  try {
-    console.log("🔥 UPSTOX LIVE EVENT RECEIVED:", data);
-    const event =
-      Buffer.isBuffer(data)
-        ? JSON.parse(data.toString("utf8"))
-        : typeof data === "string"
-        ? JSON.parse(data)
-        : data;
+        try {
+            console.log(
+                "🔥 UPSTOX LIVE EVENT RECEIVED:",
+                data
+            );
 
-    console.log("UPSTOX EVENT:", event);
+            const event =
+                Buffer.isBuffer(data)
+                    ? JSON.parse(data.toString("utf8"))
+                    : typeof data === "string"
+                    ? JSON.parse(data)
+                    : data;
 
-    // Extract the order ID from the WebSocket event.
-    const orderId =
-      event?.order_id ||
-      event?.data?.order_id ||
-      event?.payload?.order_id;
+            console.log("UPSTOX EVENT:", event);
 
-    if (!orderId) {
-      console.log("No order ID in this event. Skipping.");
-      return;
-    }
+            // Extract order ID from WebSocket event
+            const orderId =
+                event?.order_id ||
+                event?.data?.order_id ||
+                event?.payload?.order_id;
 
-    // 1. Fetch the latest order from Upstox REST API.
-    const order = await adaptor.getOrderDetails(orderId);
+            if (!orderId) {
+                console.log(
+                    "No order ID in this event. Skipping."
+                );
+                return;
+            }
 
-    // 2. Map the Upstox order into your TradeGuard format.
-    const mappedOrder = mapUpstoxOrder(order);
+            // 1. Fetch latest order details from Upstox REST API
+            const order =
+                await adaptor.getOrderDetails(orderId);
 
-    // 3. Add the authenticated user's database references.
-    const record = {
-      ...mappedOrder,
-      userId: brokerAccount.userId,
-      brokerAccountId: brokerAccount._id,
-      broker: "UPSTOX",
-      orderId,
-    };
+            // 2. Map the order into TradeGuard format
+            const mappedOrder =
+                mapUpstoxOrder(order);
 
-    // 4. Update existing order record or insert a new one.
-    await TradeRecord.updateOne(
-      {
-        brokerAccountId: brokerAccount._id,
-        orderId,
-      },
-      {
-        $set: record,
-      },
-      {
-        upsert: true,
-      }
-    );
+            // 3. Generate a unique synthetic tradeId
+            // for this ORDER record.
+            //
+            // Do not use this synthetic ID as an actual
+            // execution/trade ID in P&L calculations.
+            const syntheticTradeId = `ORDER_${orderId}`;
 
-    console.log("TradeRecord updated for order:", orderId);
-  } catch (error) {
-    console.error(
-      "WebSocket order sync failed:",
-      error.response?.data || error.message
-    );
-  }
-});
+            // 4. Prepare record
+            const record = {
+                ...mappedOrder,
+
+                userId: brokerAccount.userId,
+                brokerAccountId: brokerAccount._id,
+                broker: "UPSTOX",
+
+                // Real Upstox order ID
+                orderId: String(orderId),
+
+                // Synthetic ID to satisfy existing
+                // unique brokerAccountId + tradeId index
+                tradeId: syntheticTradeId,
+            };
+
+            // 5. Update existing order or insert it
+            await TradeRecord.updateOne(
+                {
+                    brokerAccountId: brokerAccount._id,
+                    orderId: String(orderId),
+                },
+                {
+                    $set: record,
+                },
+                {
+                    upsert: true,
+                }
+            );
+
+            console.log(
+                "TradeRecord updated for order:",
+                orderId,
+                "with tradeId:",
+                syntheticTradeId
+            );
+
+        } catch (error) {
+            console.error(
+                "WebSocket order sync failed:",
+                error.response?.data || error.message
+            );
+        }
+    });
 
     streamer.on("error", (error) => {
         console.error(

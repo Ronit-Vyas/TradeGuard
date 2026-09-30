@@ -23,11 +23,15 @@ class UpstoxAdapter {
     }
 
 
+    // --------------------------------------------------
+    // HISTORICAL TRADES
+    // --------------------------------------------------
+
     async getHistoricalTrades({
         startDate,
         endDate,
         pageNumber = 1,
-        pageSize = 100
+        pageSize = 5000
     }) {
 
         if (!startDate || !endDate) {
@@ -50,7 +54,10 @@ class UpstoxAdapter {
                 }
             );
 
-            return response.data.data || [];
+            return {
+                trades: response.data.data || [],
+                metadata: response.data.meta_data || {}
+            };
 
         } catch (error) {
 
@@ -66,6 +73,10 @@ class UpstoxAdapter {
         }
     }
 
+
+    // --------------------------------------------------
+    // TODAY'S TRADES
+    // --------------------------------------------------
 
     async getTradesForDay() {
 
@@ -91,6 +102,10 @@ class UpstoxAdapter {
         }
     }
 
+
+    // --------------------------------------------------
+    // ORDER DETAILS
+    // --------------------------------------------------
 
     async getOrderDetails(orderId) {
 

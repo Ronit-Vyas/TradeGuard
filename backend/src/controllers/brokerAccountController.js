@@ -331,42 +331,59 @@ const updateBrokerAccount = async (req, res) => {
 
 const deleteBrokerAccount = async (req, res) => {
     try {
+        const { brokerAccountId } = req.params;
 
-        const { id } = req.params;
-
-        if (!mongoose.Types.ObjectId.isValid(id)) {
+        if (!brokerAccountId) {
             return res.status(400).json({
-                success: false,
-                message: "Invalid broker account ID"
+                message: "brokerAccountId is required"
             });
         }
 
-        const brokerAccount =
-            await BrokerAccount.findByIdAndDelete(id);
+        // Find broker account first
+        const brokerAccount = await BrokerAccount.findById(
+            brokerAccountId
+        );
 
         if (!brokerAccount) {
             return res.status(404).json({
-                success: false,
                 message: "Broker account not found"
             });
         }
 
+        // IMPORTANT:
+        // Delete all TradeRecords belonging to this broker account
+        const deletedTrades = await TradeRecord.deleteMany({
+            brokerAccountId: brokerAccount._id
+        });
+
+        console.log(
+            `Deleted ${deletedTrades.deletedCount} trade records`
+        );
+
+        // Delete broker account
+        await BrokerAccount.findByIdAndDelete(
+            brokerAccount._id
+        );
+
         return res.status(200).json({
             success: true,
-            message: "Broker account deleted successfully"
+            message: "Broker account and its trade records deleted successfully",
+            deletedTradeRecords: deletedTrades.deletedCount
         });
 
     } catch (error) {
-
-        console.error("Delete Broker Account Error:", error);
+        console.error(
+            "Delete broker account error:",
+            error
+        );
 
         return res.status(500).json({
             success: false,
-            message: "Failed to delete broker account"
+            message: "Failed to delete broker account",
+            error: error.message
         });
     }
 };
-
 
 // ES MODULE EXPORTS
 export {
