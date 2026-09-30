@@ -1,6 +1,7 @@
 {
   "type": "module",
   "dependencies": {
+    "axios": "^1.20.0",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
     "crypto-js": "^4.2.0",
@@ -9,7 +10,9 @@
     "jsonwebtoken": "^9.0.3",
     "mongodb": "^6.0.0",
     "mongoose": "^9.9.2",
-    "nodemailer": "^9.0.6"
+    "ngrok": "^5.0.0-beta.2",
+    "nodemailer": "^9.0.6",
+    "upstox-js-sdk": "^2.31.0"
   },
   "scripts": {
     "start": "node src/server.js",

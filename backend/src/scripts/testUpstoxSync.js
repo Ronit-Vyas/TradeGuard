@@ -1,7 +1,7 @@
 import dotenv from "dotenv";
 
 dotenv.config({
-    path: "../../../.env"
+     path: ".env"
 });
 
 import mongoose from "mongoose";
@@ -19,24 +19,18 @@ const run = async () => {
 
     try {
 
-        /*
-         * Connect to MongoDB.
-         */
+       
         await connectDB();
 
 
-        /*
-         * Find our Upstox broker account.
-         *
-         * We don't hard-code the MongoDB ID.
-         */
+       
         const brokerAccount =
             await BrokerAccount.findOne({
                 broker: "UPSTOX",
                 isActive: true
             });
 
-
+            
         if (!brokerAccount) {
 
             throw new Error(

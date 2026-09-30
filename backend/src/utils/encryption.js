@@ -7,11 +7,12 @@ const encrypt = (text) => {
 };
 
 const decrypt = (encryptedText) => {
+    const SECRET_KEY = process.env.ENCRYPTION_KEY;
+    
     const bytes = CryptoJS.AES.decrypt(
         encryptedText,
         SECRET_KEY
     );
-
     return bytes.toString(CryptoJS.enc.Utf8);
 };
 

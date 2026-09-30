@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import BrokerAccount from "../models/BrokerAccount.js";
+import TradeRecord from "../models/TradeRecord.js";
 import { syncUpstoxHistoricalTrades, syncUpstoxTodayTrades } from "../brokers/upstox/UpstoxSyncService.js";
 
 // CREATE BROKER ACCOUNT
@@ -333,8 +334,7 @@ const deleteBrokerAccount = async (req, res) => {
             });
         }
 
-        const brokerAccount =
-            await BrokerAccount.findByIdAndDelete(id);
+        const brokerAccount = await BrokerAccount.findById(id);
 
         if (!brokerAccount) {
             return res.status(404).json({
@@ -343,9 +343,17 @@ const deleteBrokerAccount = async (req, res) => {
             });
         }
 
+        // Remove trades associated with this broker account before deleting it.
+        const deletedTrades = await TradeRecord.deleteMany({
+            brokerAccountId: brokerAccount._id
+        });
+
+        await BrokerAccount.findByIdAndDelete(brokerAccount._id);
+
         return res.status(200).json({
             success: true,
-            message: "Broker account deleted successfully"
+            message: "Broker account and its trade records deleted successfully",
+            deletedTradeRecords: deletedTrades.deletedCount
         });
 
     } catch (error) {
