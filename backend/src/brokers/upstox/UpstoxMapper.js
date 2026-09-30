@@ -1,36 +1,49 @@
+// ======================================================
+// MAP UPSTOX SEGMENT
+// ======================================================
+
 const mapUpstoxSegment = (segment) => {
     if (!segment) return undefined;
 
     const segmentMap = {
-        "EQ": "EQUITY",
+        EQ: "EQUITY",
         "F&O": "FUTURES",
-        "FO": "FUTURES",
-        "OP": "OPTIONS",
-        "CUR": "CURRENCY",
-        "CD": "COMMODITY"
+        FO: "FUTURES",
+        OP: "OPTIONS",
+        CUR: "CURRENCY",
+        CD: "COMMODITY",
     };
 
     const normalized = String(segment).toUpperCase();
+
     return segmentMap[normalized] || undefined;
 };
+
+
+// ======================================================
+// MAP UPSTOX PRODUCT
+// ======================================================
 
 const mapUpstoxProduct = (product) => {
     if (!product) return undefined;
 
     const productMap = {
-        "I": "INTRADAY",
-        "D": "DELIVERY",
-        "CO": "COVER_ORDER",
-        "MTF": "MTF"
+        I: "INTRADAY",
+        D: "DELIVERY",
+        CO: "COVER_ORDER",
+        MTF: "MTF",
     };
 
     const normalized = String(product).toUpperCase();
+
     return productMap[normalized] || undefined;
 };
 
-/**
- * Normalize order type values to the values supported by TradeGuard.
- */
+
+// ======================================================
+// MAP ORDER TYPE
+// ======================================================
+
 const mapUpstoxOrderType = (orderType) => {
     if (!orderType) return undefined;
 
@@ -40,7 +53,7 @@ const mapUpstoxOrderType = (orderType) => {
         "MARKET",
         "LIMIT",
         "SL",
-        "SL-M"
+        "SL-M",
     ];
 
     return validOrderTypes.includes(normalized)
@@ -48,12 +61,14 @@ const mapUpstoxOrderType = (orderType) => {
         : undefined;
 };
 
-/**
- * Determine the instrument segment.
- *
- * Prefer explicit instrument type because a generic FO segment
- * alone cannot distinguish futures from options.
- */
+
+// ======================================================
+// MAP INSTRUMENT SEGMENT
+//
+// Prefer explicit instrument type because a generic
+// FO segment cannot distinguish futures from options.
+// ======================================================
+
 const mapUpstoxInstrumentSegment = (trade) => {
     const instrumentType = String(
         trade.instrument_type ||
@@ -63,23 +78,32 @@ const mapUpstoxInstrumentSegment = (trade) => {
     ).toUpperCase();
 
     if (
-        ["CE", "PE", "OPTIDX", "OPTSTK", "OPTIONS", "OPTION"]
-            .includes(instrumentType)
+        [
+            "CE",
+            "PE",
+            "OPTIDX",
+            "OPTSTK",
+            "OPTIONS",
+            "OPTION",
+        ].includes(instrumentType)
     ) {
         return "OPTIONS";
     }
 
     if (
-        ["FUT", "FUTIDX", "FUTSTK", "FUTURES", "FUTURE"]
-            .includes(instrumentType)
+        [
+            "FUT",
+            "FUTIDX",
+            "FUTSTK",
+            "FUTURES",
+            "FUTURE",
+        ].includes(instrumentType)
     ) {
         return "FUTURES";
     }
 
     const mappedSegment = mapUpstoxSegment(trade.segment);
 
-    // If the segment is generic F&O, inspect the trading symbol
-    // for an option suffix such as CE or PE.
     const symbol = String(
         trade.trading_symbol ||
         trade.symbol ||
@@ -87,6 +111,8 @@ const mapUpstoxInstrumentSegment = (trade) => {
         ""
     ).toUpperCase();
 
+    // A generic F&O segment may represent an option.
+    // Check common option suffixes in the symbol.
     if (
         mappedSegment === "FUTURES" &&
         /\b(CE|PE)\b/.test(symbol)
@@ -97,42 +123,76 @@ const mapUpstoxInstrumentSegment = (trade) => {
     return mappedSegment;
 };
 
+
+// ======================================================
+// MAP TRADE
+//
+// Supports:
+// 1. Historical Trades API
+// 2. Get Trades For Day API
+// ======================================================
+
 const mapUpstoxTrade = (trade) => {
     if (!trade) {
         throw new Error("Upstox trade data is required");
     }
 
-    if (!trade.trade_id) {
+    if (
+        trade.trade_id === undefined ||
+        trade.trade_id === null ||
+        String(trade.trade_id).trim() === ""
+    ) {
         throw new Error("Upstox trade does not contain trade ID");
     }
 
+    const rawTransactionType = trade.transaction_type;
+
+    const transactionType = rawTransactionType
+        ? String(rawTransactionType).toUpperCase()
+        : undefined;
+
+    const rawPrice =
+        trade.price ??
+        trade.average_price ??
+        trade.averagePrice;
+
+    const executedPrice =
+        rawPrice !== undefined && rawPrice !== null
+            ? Number(rawPrice)
+            : 0;
+
     return {
+        // Unique execution/trade ID
         tradeId: String(trade.trade_id),
 
+        // Historical API may not provide order_id.
+        // Current-day API may provide it.
         orderId:
-            trade.order_id !== undefined && trade.order_id !== null
+            trade.order_id !== undefined &&
+            trade.order_id !== null
                 ? String(trade.order_id)
                 : null,
 
         broker: "UPSTOX",
 
+        // Historical API:
+        // symbol / scrip_name
+        //
+        // Current-day API:
+        // trading_symbol
         symbol:
             trade.trading_symbol ||
             trade.symbol ||
             trade.scrip_name ||
             null,
 
-        transactionType: trade.transaction_type
-            ? String(trade.transaction_type).toUpperCase()
-            : undefined,
+        transactionType,
 
         quantity: Number(trade.quantity || 0),
 
-        executedPrice: Number(
-            trade.price ??
-            trade.average_price ??
-            0
-        ),
+        // Keep the TradeGuard field used by the trade model
+        // and analytics.
+        executedPrice,
 
         status: "COMPLETE",
 
@@ -152,20 +212,31 @@ const mapUpstoxTrade = (trade) => {
             ? new Date(trade.timestamp)
             : null,
 
-        brokerResponse: trade
+        // Preserve the original broker payload for debugging
+        // and future field mapping.
+        brokerResponse: trade,
     };
 };
+
+
+// ======================================================
+// MAP ORDER
+// Used by Portfolio WebSocket
+// ======================================================
 
 const mapUpstoxOrder = (order) => {
     if (!order) {
         throw new Error("Upstox order data is required");
     }
 
+    const rawTransactionType = order.transaction_type;
+
     return {
         broker: "UPSTOX",
 
         orderId:
-            order.order_id !== undefined && order.order_id !== null
+            order.order_id !== undefined &&
+            order.order_id !== null
                 ? String(order.order_id)
                 : null,
 
@@ -174,8 +245,8 @@ const mapUpstoxOrder = (order) => {
             order.symbol ||
             null,
 
-        transactionType: order.transaction_type
-            ? String(order.transaction_type).toUpperCase()
+        transactionType: rawTransactionType
+            ? String(rawTransactionType).toUpperCase()
             : undefined,
 
         quantity: Number(order.quantity || 0),
@@ -192,9 +263,14 @@ const mapUpstoxOrder = (order) => {
 
         status: mapUpstoxOrderStatus(order.status),
 
-        brokerResponse: order
+        brokerResponse: order,
     };
 };
+
+
+// ======================================================
+// MAP ORDER STATUS
+// ======================================================
 
 const mapUpstoxOrderStatus = (status) => {
     if (!status) {
@@ -210,13 +286,18 @@ const mapUpstoxOrderStatus = (status) => {
         open: "PENDING",
         "trigger pending": "PENDING",
         "modify pending": "TRANSIT",
-        "cancel pending": "TRANSIT"
+        "cancel pending": "TRANSIT",
     };
 
     const normalized = String(status).toLowerCase();
 
     return statusMap[normalized] || "PENDING";
 };
+
+
+// ======================================================
+// EXPORTS
+// ======================================================
 
 export {
     mapUpstoxTrade,
@@ -225,5 +306,5 @@ export {
     mapUpstoxSegment,
     mapUpstoxProduct,
     mapUpstoxOrderType,
-    mapUpstoxInstrumentSegment
+    mapUpstoxInstrumentSegment,
 };

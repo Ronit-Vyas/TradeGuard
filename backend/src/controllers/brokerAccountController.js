@@ -1,10 +1,11 @@
 import mongoose from "mongoose";
 import BrokerAccount from "../models/BrokerAccount.js";
-import TradeRecord from "../models/TradeRecord.js";
-import { syncUpstoxHistoricalTrades, syncUpstoxTodayTrades } from "../brokers/upstox/UpstoxSyncService.js";
+import { startUpstoxStream } from "../brokers/upstox/UpstoxConnectionManager.js";
+import { syncUpstoxHistoricalTrades } from "../brokers/upstox/UpstoxSyncService.js";
 
 // CREATE BROKER ACCOUNT
 // POST /api/broker-accounts
+
 
 const createBrokerAccount = async (req, res) => {
     try {
@@ -52,6 +53,25 @@ const createBrokerAccount = async (req, res) => {
         // Save through Mongoose
         // This triggers pre("save")
         await brokerAccount.save();
+
+         if (brokerAccount.broker === "UPSTOX") {
+        //     console.log(
+        //         "Starting Upstox stream for account:",
+        //         brokerAccount._id.toString()
+        //     );
+        //    await startUpstoxStream(brokerAccount._id);
+        //    console.log(
+        //      "Upstox stream started for account:",
+        //      brokerAccount._id.toString()
+        //    );
+        //    const { startDate, endDate } = getCurrentFinancialYearRange();
+
+        //     console.log(
+        //         `Syncing Upstox financial year data: ${startDate} to ${endDate}`
+        //     );
+
+            
+         }
 
         // DEBUG
         console.log(
@@ -324,31 +344,39 @@ const updateBrokerAccount = async (req, res) => {
 
 const deleteBrokerAccount = async (req, res) => {
     try {
+        const { brokerAccountId } = req.params;
 
-        const { id } = req.params;
-
-        if (!mongoose.Types.ObjectId.isValid(id)) {
+        if (!brokerAccountId) {
             return res.status(400).json({
-                success: false,
-                message: "Invalid broker account ID"
+                message: "brokerAccountId is required"
             });
         }
 
-        const brokerAccount = await BrokerAccount.findById(id);
+        // Find broker account first
+        const brokerAccount = await BrokerAccount.findById(
+            brokerAccountId
+        );
 
         if (!brokerAccount) {
             return res.status(404).json({
-                success: false,
                 message: "Broker account not found"
             });
         }
 
-        // Remove trades associated with this broker account before deleting it.
+        // IMPORTANT:
+        // Delete all TradeRecords belonging to this broker account
         const deletedTrades = await TradeRecord.deleteMany({
             brokerAccountId: brokerAccount._id
         });
 
-        await BrokerAccount.findByIdAndDelete(brokerAccount._id);
+        console.log(
+            `Deleted ${deletedTrades.deletedCount} trade records`
+        );
+
+        // Delete broker account
+        await BrokerAccount.findByIdAndDelete(
+            brokerAccount._id
+        );
 
         return res.status(200).json({
             success: true,
@@ -357,16 +385,18 @@ const deleteBrokerAccount = async (req, res) => {
         });
 
     } catch (error) {
-
-        console.error("Delete Broker Account Error:", error);
+        console.error(
+            "Delete broker account error:",
+            error
+        );
 
         return res.status(500).json({
             success: false,
-            message: "Failed to delete broker account"
+            message: "Failed to delete broker account",
+            error: error.message
         });
     }
 };
-
 
 // SYNC BROKER TRADES
 // POST /api/broker-accounts/:id/sync
@@ -438,7 +468,6 @@ const syncBrokerTrades = async (req, res) => {
         });
     }
 };
-
 
 // ES MODULE EXPORTS
 export {

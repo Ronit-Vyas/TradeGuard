@@ -1,6 +1,8 @@
 import UpstoxAdapter from "./UpstoxAdaptor.js";
 
-import { mapUpstoxTrade } from "./UpstoxMapper.js";
+import {
+    mapUpstoxTrade
+} from "./UpstoxMapper.js";
 
 import BrokerAccount from "../../models/BrokerAccount.js";
 import TradeRecord from "../../models/TradeRecord.js";
@@ -19,7 +21,15 @@ const syncUpstoxHistoricalTrades = async ({
     // ==================================================
 
     if (!brokerAccountId) {
-        throw new Error("brokerAccountId is required");
+        throw new Error(
+            "brokerAccountId is required"
+        );
+    }
+
+    if (!startDate || !endDate) {
+        throw new Error(
+            "startDate and endDate are required"
+        );
     }
 
 
@@ -32,23 +42,32 @@ const syncUpstoxHistoricalTrades = async ({
             brokerAccountId
         );
 
+
     if (!brokerAccount) {
-        throw new Error("Broker account not found");
+        throw new Error(
+            "Broker account not found"
+        );
     }
 
 
     if (brokerAccount.broker !== "UPSTOX") {
-        throw new Error("Broker account is not an Upstox account");
+        throw new Error(
+            "Broker account is not an Upstox account"
+        );
     }
 
 
     if (!brokerAccount.isActive) {
-        throw new Error("Upstox broker account is inactive");
+        throw new Error(
+            "Upstox broker account is inactive"
+        );
     }
 
 
     if (!brokerAccount.credentials?.accessToken) {
-        throw new Error("Upstox access token not found");
+        throw new Error(
+            "Upstox access token not found"
+        );
     }
 
 
@@ -255,11 +274,14 @@ const syncUpstoxHistoricalTrades = async ({
     // ==================================================
 
     let inserted = 0;
+
     let updated = 0;
+
     let skipped = 0;
 
 
     for (const trade of trades) {
+
         try {
 
             const mappedTrade =
@@ -339,11 +361,10 @@ const syncUpstoxHistoricalTrades = async ({
 
 
         } catch (error) {
+
             console.error(
                 "Failed to save Upstox trade:",
-                error.message,
-                "Trade data:",
-                JSON.stringify(trade).slice(0, 200)
+                error.message
             );
 
             skipped++;
@@ -447,6 +468,5 @@ const syncUpstoxHistoricalTrades = async ({
 
 
 export {
-    syncUpstoxHistoricalTrades,
-    syncUpstoxTodayTrades
+    syncUpstoxHistoricalTrades
 };
