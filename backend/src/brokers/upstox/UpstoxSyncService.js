@@ -280,6 +280,52 @@ const syncUpstoxHistoricalTrades = async ({
     let skipped = 0;
 
 
+    // --------------------------------------------------
+    // PRESERVE EXISTING ORDER IDs
+    //
+    // The historical-trades API never returns order_id,
+    // so a re-sync would otherwise overwrite an
+    // already-captured orderId with null. Load the
+    // stored orderIds once and merge them back in.
+    // --------------------------------------------------
+
+    const tradeIdsToSave =
+        trades.map((trade) =>
+            String(trade.trade_id)
+        );
+
+
+    const existingRecords =
+        await TradeRecord.find(
+
+            {
+                brokerAccountId:
+                    brokerAccount._id,
+
+                tradeId: {
+                    $in: tradeIdsToSave
+                }
+            },
+
+            {
+                tradeId: 1,
+                orderId: 1
+            }
+
+        );
+
+
+    const storedOrderIds =
+        new Map(
+            existingRecords.map(
+                (record) => [
+                    record.tradeId,
+                    record.orderId
+                ]
+            )
+        );
+
+
     for (const trade of trades) {
 
         try {
@@ -314,6 +360,29 @@ const syncUpstoxHistoricalTrades = async ({
                 skipped++;
 
                 continue;
+            }
+
+
+            // ------------------------------------------
+            // KEEP STORED ORDER ID WHEN THE CURRENT
+            // PAYLOAD DOESN'T INCLUDE ONE
+            // ------------------------------------------
+
+            if (!mappedTrade.orderId) {
+
+                const storedOrderId =
+                    storedOrderIds.get(
+                        mappedTrade.tradeId
+                    );
+
+
+                if (storedOrderId) {
+
+                    mappedTrade.orderId =
+                        storedOrderId;
+
+                }
+
             }
 
 
@@ -467,6 +536,7 @@ const syncUpstoxHistoricalTrades = async ({
 };
 
 
+<<<<<<< HEAD
 
         // ==================================================
         // 6. FETCH CURRENT POSITIONS
@@ -590,8 +660,43 @@ const syncUpstoxHistoricalTrades = async ({
         console.log(
             "===================================="
         );
+=======
+const syncUpstoxTodayTrades = async ({
+    brokerAccountId
+}) => {
+
+    if (!brokerAccountId) {
+        throw new Error(
+            "brokerAccountId is required"
+        );
+    }
+
+
+    // Sync today's date through the standard flow so
+    // both the historical endpoint and the
+    // get-trades-for-day endpoint are used. The
+    // latter is the only one that returns order_id.
+    const now = new Date();
+
+    const dateStr =
+        now.toISOString().split("T")[0];
+
+
+    return syncUpstoxHistoricalTrades({
+
+        brokerAccountId,
+
+        startDate: dateStr,
+
+        endDate: dateStr
+
+    });
+
+};
+>>>>>>> f58628b137f99e49150c6ebc431390a2a149d03a
 
 
 export {
-    syncUpstoxHistoricalTrades
+    syncUpstoxHistoricalTrades,
+    syncUpstoxTodayTrades
 };
