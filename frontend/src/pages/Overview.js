@@ -55,7 +55,7 @@ function getPrice(trade) {
 
 export default function Overview() {
   const liveData = useLiveTrading();
-  const [range, setRange] = useState('30d');
+  const [range, setRange] = useState('all');
   const [drawerTrade, setDrawerTrade] = useState(null);
   const [showBanner, setShowBanner] = useState(true);
 
@@ -146,9 +146,9 @@ export default function Overview() {
   // The summary cards below remain all-time totals returned by the API.
   const filteredTrades = useMemo(() => {
     const now = new Date();
-    const days = range === '7d' ? 7 : range === '90d' ? 90 : 30;
-    const cutoff = new Date(now);
-    cutoff.setDate(cutoff.getDate() - days);
+    const isAll = range === 'all';
+    const days = range === '7d' ? 7 : range === '90d' ? 90 : range === '1y' ? 365 : isAll ? null : 30;
+    const cutoff = days ? new Date(now.getTime() - days * 24 * 60 * 60 * 1000) : null;
 
     return trades
       .filter((trade) => {
@@ -156,7 +156,9 @@ export default function Overview() {
         if (!value) return false;
 
         const date = new Date(value);
-        return !Number.isNaN(date.getTime()) && date >= cutoff && date <= now;
+        if (Number.isNaN(date.getTime())) return false;
+        if (!isAll && cutoff && date < cutoff) return false;
+        return date <= now;
       })
       .sort((a, b) => {
         const dateA = new Date(getTradeDate(a) || 0).getTime();
@@ -220,9 +222,11 @@ export default function Overview() {
           value={range}
           onChange={(event) => setRange(event.target.value)}
         >
+          <option value="all">All time</option>
           <option value="7d">Last 7 days</option>
           <option value="30d">Last 30 days</option>
           <option value="90d">Last 90 days</option>
+          <option value="1y">Last 1 year</option>
         </select>
       </div>
 

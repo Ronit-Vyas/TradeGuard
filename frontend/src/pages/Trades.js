@@ -49,7 +49,7 @@ export default function Trades() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const [range, setRange] = useState('30d');
+  const [range, setRange] = useState('all');
   const [broker, setBroker] = useState('all');
   const [side, setSide] = useState('all');
   const [search, setSearch] = useState('');
@@ -95,9 +95,9 @@ export default function Trades() {
 
   const filtered = useMemo(() => {
     const now = new Date();
-    const days = range === '1d' ? 1 : range === '7d' ? 7 : range === '90d' ? 90 : range === '1y' ? 365 : 30;
-    const cutoff = new Date(now);
-    cutoff.setDate(cutoff.getDate() - days);
+    const isAll = range === 'all';
+    const days = range === '1d' ? 1 : range === '7d' ? 7 : range === '90d' ? 90 : range === '1y' ? 365 : range === '30d' ? 30 : null;
+    const cutoff = days ? new Date(now.getTime() - days * 24 * 60 * 60 * 1000) : null;
 
     const query = search.trim().toLowerCase();
 
@@ -108,15 +108,16 @@ export default function Trades() {
         if (tradeDateValue) {
           const tradeDate = new Date(tradeDateValue);
 
-          if (
-            Number.isNaN(tradeDate.getTime()) ||
-            tradeDate < cutoff ||
-            tradeDate > now
-          ) {
+          if (Number.isNaN(tradeDate.getTime())) {
             return false;
           }
-        } else {
-          // Records without a usable date cannot be assigned to a date range.
+          if (!isAll && cutoff && tradeDate < cutoff) {
+            return false;
+          }
+          if (tradeDate > now) {
+            return false;
+          }
+        } else if (!isAll) {
           return false;
         }
 
@@ -185,6 +186,7 @@ export default function Trades() {
               value={range}
               onChange={(event) => setRange(event.target.value)}
             >
+              <option value="all">All time</option>
               <option value="1d">Last 1 day</option>
               <option value="7d">Last 7 days</option>
               <option value="30d">Last 30 days</option>

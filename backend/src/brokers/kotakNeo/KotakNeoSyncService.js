@@ -58,6 +58,24 @@ const syncKotakNeoHistoricalTrades = async ({
         trades = await adapter.getTrades();
     }
 
+    // If trade report is empty, also inspect executed orders from the order book
+    if (!Array.isArray(trades) || trades.length === 0) {
+        try {
+            const orders = await adapter.getOrders();
+            const executedOrders = (Array.isArray(orders) ? orders : []).filter(o => {
+                const filledQty = Number(o.fldQty || o.filledQuantity || o.qty || 0);
+                const status = String(o.ordSt || o.status || "").toLowerCase();
+                return filledQty > 0 || status === "complete" || status === "trad" || status === "filled";
+            });
+            if (executedOrders.length > 0) {
+                console.log(`[Kotak Neo Sync] Found ${executedOrders.length} executed orders in order book`);
+                trades = executedOrders;
+            }
+        } catch (orderErr) {
+            console.warn("[Kotak Neo Sync] Notice inspecting order book:", orderErr.message);
+        }
+    }
+
     console.log(`[Kotak Neo Sync] Fetched ${trades.length} raw trades from Kotak Neo`);
 
     let inserted = 0;

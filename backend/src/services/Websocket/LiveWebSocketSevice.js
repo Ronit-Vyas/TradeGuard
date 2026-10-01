@@ -16,6 +16,9 @@ import positionEngine from "../position/PositionEngine.js";
 import pnlEngine from "../pnl/PnLEngine.js";
 import marketDataEngine from "../marketData/MarketDataEngine.js";
 import UpstoxAdapter from "../../brokers/upstox/UpstoxAdaptor.js";
+import KotakNeoAdapter from "../../brokers/kotakNeo/KotakNeoAdapter.js";
+import DhanAdapter from "../../brokers/dhan/DhanAdapter.js";
+import { mapDhanPosition } from "../../brokers/dhan/DhanMapper.js";
 import { decrypt } from "../../utils/encryption.js";
 
 class LiveWebSocketService {
@@ -142,24 +145,61 @@ class LiveWebSocketService {
             }
 
             // 2. Check for active Upstox account to get broker positions & token
-            let accessToken = null;
             let brokerPositions = [];
+            const brokerAuth = {};
 
             try {
-                let accountQuery = { broker: "UPSTOX", isActive: true };
+                let accountQuery = { isActive: true };
                 if (mongoose.Types.ObjectId.isValid(uId)) {
-                    accountQuery = { ...accountQuery, userId: new mongoose.Types.ObjectId(uId) };
+                    accountQuery.userId = new mongoose.Types.ObjectId(uId);
                 }
-                const brokerAccount = await BrokerAccount.findOne(accountQuery);
+                const accounts = await BrokerAccount.find(accountQuery);
 
-                if (brokerAccount?.credentials?.accessToken) {
-                    accessToken = decrypt(brokerAccount.credentials.accessToken);
-                    if (accessToken) {
-                        const upstox = new UpstoxAdapter(accessToken);
-                        try {
-                            brokerPositions = await upstox.getPositions();
-                        } catch (err) {
-                            // Token might be expired or market closed, ignore error
+                for (const acc of accounts) {
+                    if (acc.broker === "UPSTOX" && acc.credentials?.accessToken) {
+                        const token = decrypt(acc.credentials.accessToken);
+                        if (token) {
+                            brokerAuth.upstoxToken = token;
+                            const upstox = new UpstoxAdapter(token);
+                            try {
+                                const upstoxPos = await upstox.getPositions();
+                                if (Array.isArray(upstoxPos)) brokerPositions.push(...upstoxPos);
+                            } catch (e) {
+                                // Token might be expired or market closed, ignore
+                            }
+                        }
+                    } else if (acc.broker === "KOTAK_NEO" && acc.credentials?.accessToken) {
+                        const token = decrypt(acc.credentials.accessToken);
+                        const sid = acc.credentials?.refreshToken ? decrypt(acc.credentials.refreshToken) : token;
+                        const consumerKey = acc.credentials?.apiKey ? decrypt(acc.credentials.apiKey) : "";
+                        if (token) {
+                            brokerAuth.kotakToken = token;
+                            brokerAuth.kotakSid = sid;
+                            brokerAuth.kotakConsumerKey = consumerKey;
+                            const kotak = new KotakNeoAdapter({ accessToken: token, sid, consumerKey });
+                            try {
+                                const kotakPos = await kotak.getPositions();
+                                if (Array.isArray(kotakPos)) brokerPositions.push(...kotakPos);
+                            } catch (e) {
+                                // Token might be expired or market closed, ignore
+                            }
+                        }
+                    } else if (acc.broker === "DHAN" && acc.credentials?.accessToken) {
+                        const token = decrypt(acc.credentials.accessToken);
+                        const clientId = acc.credentials?.clientId;
+                        if (token && clientId) {
+                            brokerAuth.dhanToken = token;
+                            brokerAuth.dhanClientId = clientId;
+                            const dhan = new DhanAdapter({ clientId, accessToken: token });
+                            try {
+                                const dhanPos = await dhan.getPositions();
+                                if (Array.isArray(dhanPos)) {
+                                    const mapped = dhanPos.map(mapDhanPosition).filter(Boolean);
+                                    brokerPositions.push(...mapped);
+                                }
+                            } catch (e) {
+                                // Token might be expired or market closed, ignore
+                            }
                         }
                     }
                 }
@@ -171,7 +211,7 @@ class LiveWebSocketService {
             const allMatchedPositions = positionEngine.processTrades(trades);
             let openPositions = positionEngine.getOpenPositions(trades);
 
-            // Reconcile with Upstox broker positions if available
+            // Reconcile with broker positions if available
             if (brokerPositions && brokerPositions.length > 0) {
                 openPositions = positionEngine.reconcileWithBrokerPositions(openPositions, brokerPositions);
             }
@@ -214,7 +254,7 @@ class LiveWebSocketService {
             pnlEngine.setPositions(uId, openPositions);
 
             // 5. Start Market Data Engine for open positions
-            await marketDataEngine.start(uId, openPositions, accessToken);
+            await marketDataEngine.start(uId, openPositions, brokerAuth);
 
             // 6. Broadcast initial calculation snapshot
             const initialSnapshot = pnlEngine.calculate(uId);

@@ -295,6 +295,61 @@ const brokerConfig = {
         },
 
 
+        // DHAN
+
+        DHAN: {
+
+            name: "Dhan",
+
+            brokeragePlan: "STANDARD",
+
+            brokerage: {
+
+                equityDelivery: {
+                    type: "FLAT",
+                    amount: 0,
+                    unit: "PER_ORDER"
+                },
+
+                equityIntraday: {
+                    type: "LOWER_OF",
+                    flat: 20,
+                    percentage: 0.03,
+                    unit: "PERCENT",
+                    basis: "TURNOVER"
+                },
+
+                equityFutures: {
+                    type: "FLAT",
+                    amount: 20,
+                    unit: "PER_ORDER"
+                },
+
+                equityOptions: {
+                    type: "FLAT",
+                    amount: 20,
+                    unit: "PER_ORDER"
+                }
+            },
+
+            dpCharges: {
+                equityDelivery: {
+                    sell: 12.50,
+                    unit: "PER_ISIN"
+                }
+            },
+
+            apiTrading: {
+                brokerage: 0,
+                platformFee: 0
+            },
+
+            otherCharges: {
+                apiSubscription: 0
+            }
+        },
+
+
         // ANGEL ONE
 
         ANGEL_ONE: {

@@ -39,12 +39,7 @@ export default function BrokerAccounts() {
   async function handleSync(id) {
     setSyncingId(id);
     try {
-      const now = new Date();
-      const currentYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
-      const startDate = `${currentYear}-04-01`;
-      const endDate = `${currentYear + 1}-03-31`;
-
-      const response = await api.syncBrokerTrades(id, { startDate, endDate });
+      const response = await api.syncBrokerTrades(id);
       const data = response?.data;
       if (data) {
         toast.push(

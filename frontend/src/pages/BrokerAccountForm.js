@@ -187,11 +187,21 @@ export default function BrokerAccountForm() {
 
           <div className="form-group">
             <label className="form-label">
-              {form.broker === 'KOTAK_NEO' ? 'Client ID / UCC *' : 'Client ID *'}
+              {form.broker === 'KOTAK_NEO' 
+                ? 'Client ID / UCC *' 
+                : form.broker === 'DHAN' 
+                ? 'Dhan Client ID (e.g. 1000000001) *' 
+                : 'Client ID *'}
             </label>
             <input
               className="form-input"
-              placeholder={form.broker === 'KOTAK_NEO' ? 'e.g. UCC code / Neo User ID' : 'e.g. Upstox UCC or Client ID'}
+              placeholder={
+                form.broker === 'KOTAK_NEO' 
+                  ? 'e.g. UCC code / Neo User ID (e.g. W0WLI)' 
+                  : form.broker === 'DHAN' 
+                  ? 'e.g. 1000000001 (found in Dhan profile)' 
+                  : 'e.g. Upstox UCC or Client ID'
+              }
               value={form.clientId}
               onChange={(e) => update('clientId', e.target.value)}
             />
@@ -199,25 +209,64 @@ export default function BrokerAccountForm() {
 
           <SecretField 
             name="accessToken" 
-            label={form.broker === 'KOTAK_NEO' ? 'Kotak Neo Session Token / Trade Token' : 'Upstox Access Token'} 
-            placeholder={form.broker === 'KOTAK_NEO' ? 'Paste Kotak Neo trade token (JWT / Auth)' : 'Paste Upstox Bearer access token'} 
+            label={
+              form.broker === 'KOTAK_NEO' 
+                ? 'Kotak Neo Trade Token / Auth (JWT starts with eyJ...) *' 
+                : form.broker === 'DHAN' 
+                ? 'Dhan Access Token (JWT from DhanHQ API portal) *' 
+                : 'Upstox Access Token (Bearer JWT) *'
+            } 
+            placeholder={
+              form.broker === 'KOTAK_NEO' 
+                ? 'Paste Kotak Neo trade JWT token (starts with eyJ...)' 
+                : form.broker === 'DHAN' 
+                ? 'Paste Dhan 24-hr access token (from dhanhq.co)' 
+                : 'Paste Upstox Bearer access token'
+            } 
           />
 
-          <SecretField 
-            name="apiKey" 
-            label={form.broker === 'KOTAK_NEO' ? 'Consumer Key (Optional)' : 'API Key (Optional)'} 
-            placeholder="Optional" 
-          />
-          <SecretField 
-            name="apiSecret" 
-            label={form.broker === 'KOTAK_NEO' ? 'Consumer Secret (Optional)' : 'API Secret (Optional)'} 
-            placeholder="Optional" 
-          />
-          <SecretField 
-            name="refreshToken" 
-            label={form.broker === 'KOTAK_NEO' ? 'Session ID / SID (Optional)' : 'Refresh Token (Optional)'} 
-            placeholder="Optional" 
-          />
+          {form.broker === 'KOTAK_NEO' && (
+            <SecretField 
+              name="refreshToken" 
+              label="Kotak Neo Session ID / SID (UUID format)" 
+              placeholder="Paste Kotak Neo Session ID (e.g. 521b3622-60f6-4893...)" 
+            />
+          )}
+
+          {form.broker === 'KOTAK_NEO' && (
+            <>
+              <SecretField 
+                name="apiKey" 
+                label="Consumer Key (Optional)" 
+                placeholder="Optional Consumer Key" 
+              />
+              <SecretField 
+                name="apiSecret" 
+                label="Consumer Secret (Optional)" 
+                placeholder="Optional Consumer Secret" 
+              />
+            </>
+          )}
+
+          {form.broker === 'UPSTOX' && (
+            <>
+              <SecretField 
+                name="apiKey" 
+                label="API Key (Optional)" 
+                placeholder="Optional" 
+              />
+              <SecretField 
+                name="apiSecret" 
+                label="API Secret (Optional)" 
+                placeholder="Optional" 
+              />
+              <SecretField 
+                name="refreshToken" 
+                label="Refresh Token (Optional)" 
+                placeholder="Optional" 
+              />
+            </>
+          )}
 
           <div className="form-group">
             <label className="form-label">Token expires at</label>

@@ -8,6 +8,8 @@
  */
 
 import UpstoxClient from "upstox-js-sdk";
+import kotakNeoMarketData from "../../brokers/kotakNeo/KotakNeoMarketDataService.js";
+import dhanMarketData from "../../brokers/dhan/DhanMarketDataService.js";
 
 export class MarketDataEngine {
     constructor() {
@@ -43,8 +45,11 @@ export class MarketDataEngine {
 
     /**
      * Start market data streaming for a user's open positions
+     * @param {string} userId - User identifier
+     * @param {Array} positions - User open positions
+     * @param {string|object} brokerAuth - Upstox access token OR object { upstoxToken, kotakToken, kotakSid, kotakConsumerKey }
      */
-    async start(userId, positions = [], accessToken = null) {
+    async start(userId, positions = [], brokerAuth = null) {
         if (!userId) return;
         const uId = String(userId);
 
@@ -70,13 +75,20 @@ export class MarketDataEngine {
             }
         });
 
-        let upstoxConnected = false;
+        const upstoxToken = typeof brokerAuth === "string" ? brokerAuth : brokerAuth?.upstoxToken;
+        const kotakToken = typeof brokerAuth === "object" ? brokerAuth?.kotakToken : null;
+        const kotakSid = typeof brokerAuth === "object" ? brokerAuth?.kotakSid : null;
+        const kotakConsumerKey = typeof brokerAuth === "object" ? brokerAuth?.kotakConsumerKey : null;
+        const dhanToken = typeof brokerAuth === "object" ? brokerAuth?.dhanToken : null;
+        const dhanClientId = typeof brokerAuth === "object" ? brokerAuth?.dhanClientId : null;
 
-        // Try connecting to Upstox MarketDataStreamerV3 if access token is available
-        if (accessToken) {
+        let liveBrokerConnected = false;
+
+        // 1. Try connecting to Upstox MarketDataStreamerV3 if access token is available
+        if (upstoxToken) {
             try {
                 const apiClient = new UpstoxClient.ApiClient();
-                apiClient.authentications["OAUTH2"].accessToken = accessToken;
+                apiClient.authentications["OAUTH2"].accessToken = upstoxToken;
 
                 const streamer = new UpstoxClient.MarketDataStreamerV3(
                     apiClient,
@@ -88,8 +100,7 @@ export class MarketDataEngine {
 
                 streamer.on("open", () => {
                     console.log(`[MarketDataEngine] Connected to Upstox WebSocket for user ${uId}`);
-                    upstoxConnected = true;
-                    // Stop fallback simulator if real stream connected
+                    liveBrokerConnected = true;
                     if (this.simulators.has(uId)) {
                         clearInterval(this.simulators.get(uId));
                         this.simulators.delete(uId);
@@ -132,8 +143,65 @@ export class MarketDataEngine {
             }
         }
 
-        // If no Upstox stream or market is off-hours, activate fallback live ticker
-        if (!upstoxConnected) {
+        // 2. Try connecting to Kotak Neo Market Data Service if token is available
+        if (kotakToken) {
+            try {
+                await kotakNeoMarketData.start(
+                    uId,
+                    kotakToken,
+                    instrumentKeys,
+                    (tick) => {
+                        liveBrokerConnected = true;
+                        if (this.simulators.has(uId)) {
+                            clearInterval(this.simulators.get(uId));
+                            this.simulators.delete(uId);
+                        }
+                        if (tick?.instrumentKey && tick?.ltp) {
+                            this.notify(uId, tick.instrumentKey, tick.ltp);
+                        }
+                        if (tick?.symbol && tick?.ltp) {
+                            this.notify(uId, tick.symbol, tick.ltp);
+                        }
+                    },
+                    kotakSid,
+                    kotakConsumerKey
+                );
+                console.log(`[MarketDataEngine] Initialized Kotak Neo Market Data stream for user ${uId}`);
+            } catch (kErr) {
+                console.warn("[MarketDataEngine] Kotak Neo market data notice:", kErr.message);
+            }
+        }
+
+        // 3. Try connecting to Dhan Market Data Service if token is available
+        if (dhanToken && dhanClientId) {
+            try {
+                await dhanMarketData.start(
+                    uId,
+                    dhanClientId,
+                    dhanToken,
+                    instrumentKeys,
+                    (tick) => {
+                        liveBrokerConnected = true;
+                        if (this.simulators.has(uId)) {
+                            clearInterval(this.simulators.get(uId));
+                            this.simulators.delete(uId);
+                        }
+                        if (tick?.instrumentKey && tick?.ltp) {
+                            this.notify(uId, tick.instrumentKey, tick.ltp);
+                        }
+                        if (tick?.symbol && tick?.ltp) {
+                            this.notify(uId, tick.symbol, tick.ltp);
+                        }
+                    }
+                );
+                console.log(`[MarketDataEngine] Initialized Dhan Market Data stream for user ${uId}`);
+            } catch (dErr) {
+                console.warn("[MarketDataEngine] Dhan market data notice:", dErr.message);
+            }
+        }
+
+        // 4. Fallback real-time price tick simulator for off-market hours/resilience
+        if (!liveBrokerConnected) {
             this.ensureFallbackSimulator(uId, positions);
         }
     }
@@ -178,6 +246,18 @@ export class MarketDataEngine {
                 // ignore
             }
             this.streamers.delete(uId);
+        }
+
+        try {
+            kotakNeoMarketData.stop(uId);
+        } catch (e) {
+            // ignore
+        }
+
+        try {
+            dhanMarketData.stop(uId);
+        } catch (e) {
+            // ignore
         }
 
         if (this.simulators.has(uId)) {

@@ -4,6 +4,8 @@ import BrokerAccount from "../models/BrokerAccount.js";
 import { syncUpstoxHistoricalTrades, syncUpstoxTodayTrades } from "../brokers/upstox/UpstoxSyncService.js";
 import { syncKotakNeoHistoricalTrades, syncKotakNeoTodayTrades } from "../brokers/kotakNeo/KotakNeoSyncService.js";
 import KotakNeoAdapter from "../brokers/kotakNeo/KotakNeoAdapter.js";
+import { syncDhanHistoricalTrades, syncDhanTodayTrades } from "../brokers/dhan/DhanSyncService.js";
+import DhanAdapter from "../brokers/dhan/DhanAdapter.js";
 import { decrypt } from "../utils/encryption.js";
 
 /**
@@ -136,6 +138,76 @@ export const verifyBrokerCredentials = async (brokerAccount) => {
 
             // If the Kotak Neo gateway was reached (e.g. stCode received) or valid active token is configured
             if (error.response?.data?.stCode || (token && token.length >= 10 && brokerAccount.isActive)) {
+                if (!brokerAccount.isConnected) {
+                    brokerAccount.isConnected = true;
+                    brokerAccount.lastConnectedAt = new Date();
+                    await brokerAccount.save();
+                }
+                return true;
+            }
+
+            if (brokerAccount.isConnected) {
+                brokerAccount.isConnected = false;
+                await brokerAccount.save();
+            }
+            return false;
+        }
+    }
+
+    if (brokerAccount.broker === "DHAN") {
+        if (!brokerAccount.credentials?.accessToken || !brokerAccount.credentials?.clientId) {
+            if (brokerAccount.isConnected) {
+                brokerAccount.isConnected = false;
+                await brokerAccount.save();
+            }
+            return false;
+        }
+
+        let token = null;
+        try {
+            token = decrypt(brokerAccount.credentials.accessToken);
+        } catch {
+            token = brokerAccount.credentials.accessToken;
+        }
+
+        if (!token) {
+            if (brokerAccount.isConnected) {
+                brokerAccount.isConnected = false;
+                await brokerAccount.save();
+            }
+            return false;
+        }
+
+        try {
+            const dhan = new DhanAdapter({
+                clientId: brokerAccount.credentials.clientId,
+                accessToken: token
+            });
+            await dhan.getFundLimits();
+
+            if (!brokerAccount.isConnected) {
+                brokerAccount.isConnected = true;
+                brokerAccount.lastConnectedAt = new Date();
+                await brokerAccount.save();
+            }
+            return true;
+        } catch (error) {
+            const isAuthError =
+                error.status === 401 ||
+                error.status === 403 ||
+                error.message?.toLowerCase().includes("token") ||
+                error.message?.toLowerCase().includes("unauthorized") ||
+                error.message?.toLowerCase().includes("session");
+
+            if (isAuthError) {
+                if (brokerAccount.isConnected) {
+                    brokerAccount.isConnected = false;
+                    await brokerAccount.save();
+                }
+                return false;
+            }
+
+            if (token && token.length >= 10 && brokerAccount.isActive) {
                 if (!brokerAccount.isConnected) {
                     brokerAccount.isConnected = true;
                     brokerAccount.lastConnectedAt = new Date();
@@ -621,9 +693,39 @@ const syncBrokerTrades = async (req, res) => {
                     endDate
                 });
             } else {
-                result = await syncUpstoxTodayTrades({
-                    brokerAccountId: id
-                });
+                const now = new Date();
+                const curFY = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+                // Query both current and previous financial years so historical trades across years are fetched
+                const ranges = [
+                    { start: `${curFY - 1}-04-01`, end: `${curFY}-03-31` },
+                    { start: `${curFY}-04-01`, end: `${curFY + 1}-03-31` }
+                ];
+                let totalInserted = 0;
+                let totalUpdated = 0;
+                let totalSkipped = 0;
+                let totalFetched = 0;
+
+                for (const r of ranges) {
+                    try {
+                        const rRes = await syncUpstoxHistoricalTrades({
+                            brokerAccountId: id,
+                            startDate: r.start,
+                            endDate: r.end
+                        });
+                        totalInserted += rRes?.inserted || 0;
+                        totalUpdated += rRes?.updated || 0;
+                        totalSkipped += rRes?.skipped || 0;
+                        totalFetched += rRes?.totalFetched || rRes?.total || 0;
+                    } catch (rErr) {
+                        console.warn(`[Upstox Sync] Notice for FY ${r.start} - ${r.end}:`, rErr.message);
+                    }
+                }
+                result = {
+                    inserted: totalInserted,
+                    updated: totalUpdated,
+                    skipped: totalSkipped,
+                    total: totalFetched
+                };
             }
         } else if (brokerAccount.broker === "KOTAK_NEO") {
             if (startDate && endDate) {
@@ -637,6 +739,17 @@ const syncBrokerTrades = async (req, res) => {
                     brokerAccountId: id
                 });
             }
+        } else if (brokerAccount.broker === "DHAN") {
+            const now = new Date();
+            const curFY = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+            const start = startDate || `${curFY - 1}-04-01`;
+            const end = endDate || now.toISOString().split("T")[0];
+
+            result = await syncDhanHistoricalTrades({
+                brokerAccountId: id,
+                startDate: start,
+                endDate: end
+            });
         } else {
             return res.status(400).json({
                 success: false,

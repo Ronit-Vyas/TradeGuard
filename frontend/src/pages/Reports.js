@@ -6,7 +6,7 @@ import { api } from '../api/client';
 import { BROKER_META } from '../data/mockData';
 
 export default function Reports() {
-  const [range, setRange] = useState('30d');
+  const [range, setRange] = useState('all');
   const [brokerFilter, setBrokerFilter] = useState('all');
   const [activeTab, setActiveTab] = useState('positions'); // 'positions' | 'trades'
   const [data, setData] = useState(null);

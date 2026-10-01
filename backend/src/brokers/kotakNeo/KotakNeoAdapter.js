@@ -6,27 +6,27 @@ class KotakNeoAdapter {
             throw new Error("Kotak Neo access token is required");
         }
 
-        this.accessToken = accessToken;
-        this.sid = sid || "";
-        this.consumerKey = consumerKey || "";
+        this.accessToken = String(accessToken).trim();
+        this.sid = sid ? String(sid).trim() : this.accessToken;
+        this.consumerKey = consumerKey ? String(consumerKey).trim() : "";
         this.baseURL = "https://mis.kotaksecurities.com";
-        this.fallbackURL = "https://tradeapi.kotaksecurities.com";
+        this.fallbackURL = "https://cis.kotaksecurities.com";
 
         this.headers = {
             "Accept": "application/json",
             "Content-Type": "application/json",
             "Auth": this.accessToken,
-            "Authorization": `Bearer ${this.accessToken}`,
+            "Sid": this.sid,
             "neo-fin-key": "neotradeapi"
         };
 
-        if (this.sid) {
-            this.headers["Sid"] = this.sid;
+        if (this.consumerKey) {
+            this.headers["Authorization"] = this.consumerKey;
         }
 
         this.client = axios.create({
             baseURL: this.baseURL,
-            timeout: 8000,
+            timeout: 10000,
             headers: this.headers
         });
     }
@@ -44,7 +44,7 @@ class KotakNeoAdapter {
                 try {
                     const fallbackClient = axios.create({
                         baseURL: this.fallbackURL,
-                        timeout: 8000,
+                        timeout: 10000,
                         headers: this.headers
                     });
                     return await fallbackClient.request({
@@ -62,6 +62,7 @@ class KotakNeoAdapter {
 
     // --------------------------------------------------
     // TRADE REPORT / TRADES
+    // Official Endpoint: /quick/user/trades
     // --------------------------------------------------
     async getTrades(orderId = "") {
         try {
@@ -72,22 +73,29 @@ class KotakNeoAdapter {
 
             let response;
             try {
-                response = await this._request("GET", "/Orders/2.0/quick/user/trades", { params });
+                response = await this._request("GET", "/quick/user/trades", { params });
             } catch (err) {
-                // Try legacy path if v2 path fails with 404
-                if (err.response?.status === 404) {
-                    response = await this._request("GET", "/quick/user/trades", { params });
-                } else {
+                // Check if session token expired
+                if (err.response?.data?.stCode === 100022 || err.response?.data?.errMsg?.includes("session")) {
+                    throw new Error("Kotak Neo session has expired. Please update your session token in Broker Accounts.");
+                }
+                // Try fetching from user orders if trades endpoint is empty or restricted
+                try {
+                    response = await this._request("GET", "/quick/user/orders", { params });
+                } catch {
                     throw err;
                 }
             }
 
-            const data = response.data;
+            const data = response?.data;
             if (Array.isArray(data)) {
                 return data;
             }
             if (Array.isArray(data?.data)) {
                 return data.data;
+            }
+            if (data?.stat === "Ok" && Array.isArray(data?.result)) {
+                return data.result;
             }
             return [];
         } catch (error) {
@@ -95,11 +103,13 @@ class KotakNeoAdapter {
                 "Kotak Neo Trades Error:",
                 error.response?.data || error.message
             );
-            throw new Error(
+            const errMsg =
+                error.response?.data?.errMsg ||
                 error.response?.data?.message ||
                 error.response?.data?.error ||
-                "Failed to fetch trades from Kotak Neo"
-            );
+                error.message ||
+                "Failed to fetch trades from Kotak Neo";
+            throw new Error(`Failed to fetch trades from Kotak Neo: ${errMsg}`);
         }
     }
 
@@ -112,7 +122,6 @@ class KotakNeoAdapter {
 
         const start = new Date(startDate);
         const end = new Date(endDate);
-        // Include full end day
         end.setHours(23, 59, 59, 999);
 
         return allTrades.filter(t => {
@@ -133,85 +142,109 @@ class KotakNeoAdapter {
 
     // --------------------------------------------------
     // POSITIONS
+    // Official Endpoint: /quick/user/positions
     // --------------------------------------------------
     async getPositions() {
         try {
-            let response;
-            try {
-                response = await this._request("GET", "/Orders/2.0/quick/user/positions");
-            } catch (err) {
-                if (err.response?.status === 404) {
-                    response = await this._request("GET", "/quick/user/positions");
-                } else {
-                    throw err;
-                }
-            }
-
-            const data = response.data;
+            const response = await this._request("GET", "/quick/user/positions");
+            const data = response?.data;
             if (Array.isArray(data)) return data;
             if (Array.isArray(data?.data)) return data.data;
+            if (data?.stat === "Ok" && Array.isArray(data?.result)) return data.result;
             return [];
         } catch (error) {
             console.error(
                 "Kotak Neo Positions Error:",
                 error.response?.data || error.message
             );
-            throw new Error(
-                error.response?.data?.message ||
-                error.response?.data?.error ||
-                "Failed to fetch positions from Kotak Neo"
-            );
+            const errMsg = error.response?.data?.errMsg || error.message;
+            throw new Error(`Failed to fetch positions from Kotak Neo: ${errMsg}`);
         }
     }
 
     // --------------------------------------------------
     // ORDERS
+    // Official Endpoint: /quick/user/orders
     // --------------------------------------------------
     async getOrders() {
         try {
-            let response;
-            try {
-                response = await this._request("GET", "/Orders/2.0/quick/user/orders");
-            } catch (err) {
-                if (err.response?.status === 404) {
-                    response = await this._request("GET", "/quick/user/orders");
-                } else {
-                    throw err;
-                }
-            }
-
-            const data = response.data;
+            const response = await this._request("GET", "/quick/user/orders");
+            const data = response?.data;
             if (Array.isArray(data)) return data;
             if (Array.isArray(data?.data)) return data.data;
+            if (data?.stat === "Ok" && Array.isArray(data?.result)) return data.result;
             return [];
         } catch (error) {
             console.error(
                 "Kotak Neo Orders Error:",
                 error.response?.data || error.message
             );
-            throw new Error(
-                error.response?.data?.message ||
-                "Failed to fetch orders from Kotak Neo"
-            );
+            const errMsg = error.response?.data?.errMsg || error.message;
+            throw new Error(`Failed to fetch orders from Kotak Neo: ${errMsg}`);
         }
     }
 
     // --------------------------------------------------
-    // LIMITS / VERIFY CREDENTIALS
+    // HOLDINGS
+    // Official Endpoint: /portfolio/v1/holdings
+    // --------------------------------------------------
+    async getHoldings() {
+        try {
+            const response = await this._request("GET", "/portfolio/v1/holdings");
+            const data = response?.data;
+            if (Array.isArray(data)) return data;
+            if (Array.isArray(data?.data)) return data.data;
+            return [];
+        } catch (error) {
+            console.error("Kotak Neo Holdings Error:", error.response?.data || error.message);
+            return [];
+        }
+    }
+
+    // --------------------------------------------------
+    // LIMITS / MARGINS
+    // Official Endpoint: /quick/user/limits
     // --------------------------------------------------
     async getLimits() {
-        let response;
         try {
-            response = await this._request("GET", "/Orders/2.0/quick/user/limits");
-        } catch (err) {
-            if (err.response?.status === 404) {
-                response = await this._request("GET", "/quick/user/limits");
-            } else {
-                throw err;
-            }
+            const response = await this._request("GET", "/quick/user/limits");
+            return response?.data;
+        } catch (error) {
+            console.error("Kotak Neo Limits Error:", error.response?.data || error.message);
+            return null;
         }
-        return response.data;
+    }
+
+    // --------------------------------------------------
+    // MARKET DATA: QUOTES
+    // Official Endpoint: /script-details/1.0/quotes/neosymbol/{symbols}/{quoteType}
+    // --------------------------------------------------
+    async getQuotes(neoSymbols = "", quoteType = "LTP") {
+        try {
+            if (!neoSymbols) return null;
+            const path = `/script-details/1.0/quotes/neosymbol/${encodeURIComponent(neoSymbols)}/${encodeURIComponent(quoteType)}`;
+            const response = await this._request("GET", path);
+            return response?.data;
+        } catch (error) {
+            console.error("Kotak Neo Quotes Error:", error.response?.data || error.message);
+            return null;
+        }
+    }
+
+    // --------------------------------------------------
+    // MARKET DATA: HISTORICAL CANDLE DATA
+    // Official Endpoint: /market-data/1.0/historical/details
+    // --------------------------------------------------
+    async getHistoricalCandles(params = {}) {
+        try {
+            const response = await this._request("GET", "/market-data/1.0/historical/details", { params });
+            return response?.data;
+        } catch (error) {
+            console.error("Kotak Neo Historical Candles Error:", error.response?.data || error.message);
+            return null;
+        }
     }
 }
 
 export default KotakNeoAdapter;
+

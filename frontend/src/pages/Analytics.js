@@ -6,7 +6,7 @@ import { Info, X } from 'lucide-react';
 import { api } from '../api/client';
 
 export default function Analytics() {
-  const [range, setRange] = useState('30d');
+  const [range, setRange] = useState('all');
   const [showBanner, setShowBanner] = useState(true);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
