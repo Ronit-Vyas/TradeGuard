@@ -44,9 +44,15 @@ const LoginPage = () => {
       }
 
       localStorage.setItem('token', data.token);
+      localStorage.setItem('tg_token', data.token);
 
       if (data.user) {
         localStorage.setItem('user', JSON.stringify(data.user));
+        localStorage.setItem('tg_user', JSON.stringify(data.user));
+      }
+
+      if (Array.isArray(data.brokerAccounts)) {
+        localStorage.setItem('tg_broker_accounts', JSON.stringify(data.brokerAccounts));
       }
 
       navigate('/');

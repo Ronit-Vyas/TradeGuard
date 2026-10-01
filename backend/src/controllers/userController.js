@@ -1,39 +1,60 @@
 import User from "../models/User.js";
+import BrokerAccount from "../models/BrokerAccount.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import transporter from "../utils/transporter.js";
+import { verifyBrokerCredentials } from "./brokerAccountController.js";
 
 dotenv.config();
 
 export async function login(req, res) {
+    try {
+        const { email, password } = req.body;
 
-    try{
-        const {email , password} = req.body
+        const user = await User.findOne({ email });
 
-        const user = await User.findOne({email});
-
-        if(!user){
-            return res.status(404).json({message : "User not found"})
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
         }
 
-        const isPasswordCorrect = await bcrypt.compare(password , user.password)
-        
-        if(!isPasswordCorrect) return res.status(400).json({message : "Invalid credentials"})
+        const isPasswordCorrect = await bcrypt.compare(password, user.password);
 
-         const token = jwt.sign(
-             {userId : user._id , email : user.email},
-             process.env.JWT_SECRET,
-             {expiresIn : "1d"}
-         )
-        
-         res.status(200).json({token, user: {id: user._id, username: user.username, email: user.email}});
+        if (!isPasswordCorrect) return res.status(400).json({ message: "Invalid credentials" });
+
+        const token = jwt.sign(
+            { userId: user._id, email: user.email },
+            process.env.JWT_SECRET,
+            { expiresIn: "1d" }
+        );
+
+        // Check and verify user's broker account tokens live upon login
+        let verifiedBrokerAccounts = [];
+        try {
+            const accounts = await BrokerAccount.find({ userId: user._id });
+            await Promise.all(
+                accounts.map(acc => verifyBrokerCredentials(acc).catch(() => false))
+            );
+            verifiedBrokerAccounts = accounts.map(acc => ({
+                id: acc._id,
+                broker: acc.broker,
+                isConnected: acc.isConnected,
+                lastConnectedAt: acc.lastConnectedAt
+            }));
+        } catch (e) {
+            console.warn("Broker verification on login warning:", e.message);
+        }
+
+        res.status(200).json({
+            token,
+            user: { id: user._id, userId: user._id, username: user.username, email: user.email },
+            brokerAccounts: verifiedBrokerAccounts
+        });
     }
-    catch(error){
-        console.log("Error to get all User",error)
-        res.status(500).json({message : "Internal Server Error"});
+    catch (error) {
+        console.log("Error to get all User", error);
+        res.status(500).json({ message: "Internal Server Error" });
     }
-    
 }
 
 

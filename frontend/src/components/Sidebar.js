@@ -3,9 +3,11 @@ import { NavLink } from 'react-router-dom';
 import {
   Shield, LayoutDashboard, Wallet, ArrowLeftRight, BarChart3,
   Receipt, AlertTriangle, FileText, GitCompare, Settings, X, ChevronLeft,
+  Activity,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
+  { to: '/app/live', label: 'Live Trading', icon: Activity, isLive: true },
   { to: '/app/overview', label: 'Overview', icon: LayoutDashboard },
   { to: '/app/broker-accounts', label: 'Broker Accounts', icon: Wallet },
   { to: '/app/trades', label: 'Trades', icon: ArrowLeftRight },
@@ -33,11 +35,16 @@ export default function Sidebar({ collapsed, onToggle }) {
             <NavLink
               key={item.to}
               to={item.to}
-              className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+              className={({ isActive }) => `nav-item ${isActive ? 'active' : ''} ${item.isLive ? 'nav-item-live' : ''}`}
               title={collapsed ? item.label : undefined}
             >
-              <Icon size={18} />
-              {!collapsed && <span>{item.label}</span>}
+              <Icon size={18} className={item.isLive ? 'nav-live-icon' : ''} />
+              {!collapsed && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                  <span>{item.label}</span>
+                  {item.isLive && <span className="nav-live-dot" />}
+                </div>
+              )}
             </NavLink>
           );
         })}

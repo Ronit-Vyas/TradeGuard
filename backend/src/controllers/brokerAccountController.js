@@ -1,6 +1,85 @@
 import mongoose from "mongoose";
+import axios from "axios";
 import BrokerAccount from "../models/BrokerAccount.js";
-import { syncUpstoxHistoricalTrades } from "../brokers/upstox/UpstoxSyncService.js";
+import { syncUpstoxHistoricalTrades, syncUpstoxTodayTrades } from "../brokers/upstox/UpstoxSyncService.js";
+import { decrypt } from "../utils/encryption.js";
+
+/**
+ * Validates broker credentials against live broker API.
+ * For Upstox, queries /user/profile with decrypted access token.
+ * Updates isConnected in DB and returns boolean.
+ */
+export const verifyBrokerCredentials = async (brokerAccount) => {
+    if (!brokerAccount) return false;
+
+    if (brokerAccount.broker === "UPSTOX") {
+        if (!brokerAccount.credentials?.accessToken) {
+            if (brokerAccount.isConnected) {
+                brokerAccount.isConnected = false;
+                await brokerAccount.save();
+            }
+            return false;
+        }
+
+        let token = null;
+        try {
+            token = decrypt(brokerAccount.credentials.accessToken);
+        } catch (e) {
+            token = brokerAccount.credentials.accessToken;
+        }
+
+        if (!token) {
+            if (brokerAccount.isConnected) {
+                brokerAccount.isConnected = false;
+                await brokerAccount.save();
+            }
+            return false;
+        }
+
+        try {
+            const response = await axios.get("https://api.upstox.com/v2/user/profile", {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    Accept: "application/json"
+                },
+                timeout: 3000
+            });
+
+            if (response.status === 200 && response.data?.status === "success") {
+                if (!brokerAccount.isConnected) {
+                    brokerAccount.isConnected = true;
+                    brokerAccount.lastConnectedAt = new Date();
+                    await brokerAccount.save();
+                }
+                return true;
+            } else {
+                if (brokerAccount.isConnected) {
+                    brokerAccount.isConnected = false;
+                    await brokerAccount.save();
+                }
+                return false;
+            }
+        } catch (error) {
+            // Token is invalid/expired (e.g. 401, 403, UDAPI100050)
+            if (brokerAccount.isConnected) {
+                brokerAccount.isConnected = false;
+                await brokerAccount.save();
+            }
+            return false;
+        }
+    }
+
+    // For other brokers
+    if (!brokerAccount.credentials?.accessToken && !brokerAccount.credentials?.apiKey) {
+        if (brokerAccount.isConnected) {
+            brokerAccount.isConnected = false;
+            await brokerAccount.save();
+        }
+        return false;
+    }
+
+    return Boolean(brokerAccount.isConnected);
+};
 
 // CREATE BROKER ACCOUNT
 // POST /api/broker-accounts
@@ -140,19 +219,31 @@ const getBrokerAccounts = async (req, res) => {
 
         const brokerAccounts = await BrokerAccount
             .find(filter)
-            .select(
-                "-credentials.apiKey " +
-                "-credentials.apiSecret " +
-                "-credentials.accessToken " +
-                "-credentials.refreshToken"
-            )
             .sort({ createdAt: -1 });
+
+        // Actively verify live connection status with broker API
+        await Promise.all(
+            brokerAccounts.map(account => verifyBrokerCredentials(account).catch(() => false))
+        );
+
+        // Sanitize sensitive credentials
+        const sanitized = brokerAccounts.map(acc => {
+            const doc = acc.toObject ? acc.toObject() : { ...acc };
+            if (doc.credentials) {
+                delete doc.credentials.apiKey;
+                delete doc.credentials.apiSecret;
+                delete doc.credentials.accessToken;
+                delete doc.credentials.refreshToken;
+            }
+            return doc;
+        });
 
         return res.status(200).json({
             success: true,
-            count: brokerAccounts.length,
-            data: brokerAccounts
+            count: sanitized.length,
+            data: sanitized
         });
+
 
     } catch (error) {
 
@@ -468,6 +559,44 @@ const syncBrokerTrades = async (req, res) => {
     }
 };
 
+// VERIFY LIVE BROKER ACCOUNT STATUS ON DEMAND
+// POST /api/broker-accounts/:id/verify
+const verifyBrokerAccount = async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid broker account ID"
+            });
+        }
+
+        const brokerAccount = await BrokerAccount.findById(id);
+        if (!brokerAccount) {
+            return res.status(404).json({
+                success: false,
+                message: "Broker account not found"
+            });
+        }
+
+        const isConnected = await verifyBrokerCredentials(brokerAccount);
+
+        return res.status(200).json({
+            success: true,
+            isConnected,
+            message: isConnected
+                ? "Broker account credentials are valid and connected!"
+                : "Broker access token is expired or invalid. Please update credentials."
+        });
+    } catch (error) {
+        console.error("Verify broker account error:", error);
+        return res.status(500).json({
+            success: false,
+            message: error.message || "Failed to verify broker account"
+        });
+    }
+};
+
 // ES MODULE EXPORTS
 export {
     createBrokerAccount,
@@ -475,5 +604,6 @@ export {
     getBrokerAccount,
     updateBrokerAccount,
     deleteBrokerAccount,
-    syncBrokerTrades
-};
+    syncBrokerTrades,
+    verifyBrokerAccount
+};

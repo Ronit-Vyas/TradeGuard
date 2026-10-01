@@ -93,6 +93,10 @@ const syncUpstoxHistoricalTrades = async ({
     );
 
 
+    // IMPORTANT:
+    // Keep this inside the function so it can be used
+    // by both trade sync and positions/P&L.
+
     const upstox =
         new UpstoxAdapter(accessToken);
 
@@ -156,8 +160,6 @@ const syncUpstoxHistoricalTrades = async ({
         );
 
 
-        // If less than pageSize,
-        // this is the final page.
         if (pageTrades.length < pageSize) {
             break;
         }
@@ -204,7 +206,8 @@ const syncUpstoxHistoricalTrades = async ({
         );
 
         // Don't completely fail historical sync
-        // just because today's endpoint failed.
+        // if today's endpoint fails.
+
         todayTrades = [];
     }
 
@@ -280,52 +283,6 @@ const syncUpstoxHistoricalTrades = async ({
     let skipped = 0;
 
 
-    // --------------------------------------------------
-    // PRESERVE EXISTING ORDER IDs
-    //
-    // The historical-trades API never returns order_id,
-    // so a re-sync would otherwise overwrite an
-    // already-captured orderId with null. Load the
-    // stored orderIds once and merge them back in.
-    // --------------------------------------------------
-
-    const tradeIdsToSave =
-        trades.map((trade) =>
-            String(trade.trade_id)
-        );
-
-
-    const existingRecords =
-        await TradeRecord.find(
-
-            {
-                brokerAccountId:
-                    brokerAccount._id,
-
-                tradeId: {
-                    $in: tradeIdsToSave
-                }
-            },
-
-            {
-                tradeId: 1,
-                orderId: 1
-            }
-
-        );
-
-
-    const storedOrderIds =
-        new Map(
-            existingRecords.map(
-                (record) => [
-                    record.tradeId,
-                    record.orderId
-                ]
-            )
-        );
-
-
     for (const trade of trades) {
 
         try {
@@ -360,29 +317,6 @@ const syncUpstoxHistoricalTrades = async ({
                 skipped++;
 
                 continue;
-            }
-
-
-            // ------------------------------------------
-            // KEEP STORED ORDER ID WHEN THE CURRENT
-            // PAYLOAD DOESN'T INCLUDE ONE
-            // ------------------------------------------
-
-            if (!mappedTrade.orderId) {
-
-                const storedOrderId =
-                    storedOrderIds.get(
-                        mappedTrade.tradeId
-                    );
-
-
-                if (storedOrderId) {
-
-                    mappedTrade.orderId =
-                        storedOrderId;
-
-                }
-
             }
 
 
@@ -442,261 +376,344 @@ const syncUpstoxHistoricalTrades = async ({
 
 
     // ==================================================
-    // FINAL RESULT
+    // 6. FETCH CURRENT POSITIONS
     // ==================================================
 
+    console.log("");
+    console.log(
+        "Fetching current Upstox positions..."
+    );
+
+
+    const positions =
+        await upstox.getPositions();
+
+
+    console.log(
+        "Current positions fetched:",
+        positions.length
+    );
+
+
+    // ==================================================
+    // 7. CALCULATE & PRINT P&L
+    // ==================================================
+
+    console.log("");
     console.log(
         "===================================="
     );
 
     console.log(
+        "TRADEGUARD P&L SNAPSHOT"
+    );
+
+    console.log(
+        "===================================="
+    );
+
+
+    let totalUnrealised = 0;
+
+    let totalRealised = 0;
+
+
+    if (positions.length === 0) {
+
+        console.log(
+            "No open positions found."
+        );
+
+    } else {
+
+        for (const position of positions) {
+
+            const quantity =
+                Number(
+                    position.quantity || 0
+                );
+
+
+            const averagePrice =
+                Number(
+                    position.average_price || 0
+                );
+
+
+            const lastPrice =
+                Number(
+                    position.last_price || 0
+                );
+
+
+            const unrealised =
+                Number(
+                    position.unrealised || 0
+                );
+
+
+            const realised =
+                Number(
+                    position.realised || 0
+                );
+
+
+            totalUnrealised +=
+                unrealised;
+
+
+            totalRealised +=
+                realised;
+
+
+            console.log("");
+
+            console.log(
+                position.trading_symbol
+            );
+
+
+            console.log(
+                "------------------------------------"
+            );
+
+
+            console.log(
+                "Quantity       :",
+                quantity
+            );
+
+
+            console.log(
+                "Average Price  : ₹",
+                averagePrice
+            );
+
+
+            console.log(
+                "Last Price     : ₹",
+                lastPrice
+            );
+
+
+            console.log(
+                "Unrealised P&L : ₹",
+                unrealised
+            );
+
+
+            console.log(
+                "Realised P&L   : ₹",
+                realised
+            );
+        }
+    }
+
+
+    // ==================================================
+    // 8. TOTAL P&L
+    // ==================================================
+
+    const totalPnl =
+        totalUnrealised +
+        totalRealised;
+
+
+    console.log("");
+
+    console.log(
+        "------------------------------------"
+    );
+
+
+    console.log(
+        "Total Unrealised P&L : ₹",
+        totalUnrealised
+    );
+
+
+    console.log(
+        "Total Realised P&L   : ₹",
+        totalRealised
+    );
+
+
+    console.log(
+        "Total P&L            : ₹",
+        totalPnl
+    );
+
+
+    console.log(
+        "===================================="
+    );
+
+
+    // ==================================================
+    // 9. FINAL SYNC RESULT
+    // ==================================================
+
+    console.log(
         "UPSTOX SYNC COMPLETED"
     );
+
 
     console.log(
         "Historical fetched:",
         historicalTrades.length
     );
 
+
     console.log(
         "Today's fetched:",
         todayTrades.length
     );
+
 
     console.log(
         "Combined:",
         allTrades.length
     );
 
+
     console.log(
         "Unique:",
         trades.length
     );
+
 
     console.log(
         "Inserted:",
         inserted
     );
 
+
     console.log(
         "Updated:",
         updated
     );
+
 
     console.log(
         "Skipped:",
         skipped
     );
 
+
     console.log(
         "===================================="
     );
 
 
+    // ==================================================
+    // 10. RETURN RESULT
+    // ==================================================
+
     return {
-
-        broker:
-            "UPSTOX",
-
-
-        brokerAccountId:
-            brokerAccount._id,
-
-
+        broker: "UPSTOX",
+        brokerAccountId: brokerAccount._id,
         startDate,
-
-
         endDate,
-
-
-        historicalFetched:
-            historicalTrades.length,
-
-
-        todayFetched:
-            todayTrades.length,
-
-
-        totalFetched:
-            allTrades.length,
-
-
-        uniqueTrades:
-            trades.length,
-
-
+        historicalFetched: historicalTrades.length,
+        todayFetched: todayTrades.length,
+        totalFetched: allTrades.length,
+        uniqueTrades: trades.length,
         inserted,
-
-
         updated,
-
-
-        skipped
+        skipped,
+        totalUnrealised,
+        totalRealised,
+        totalPnl
     };
 };
 
-
-<<<<<<< HEAD
-
-        // ==================================================
-        // 6. FETCH CURRENT POSITIONS
-        // ==================================================
-
-        console.log(
-            "Fetching current Upstox positions..."
-        );
-
-        const positions =
-            await upstox.getPositions();
-
-        console.log(
-            "Current positions fetched:",
-            positions.length
-        );
-
-
-        // ==================================================
-        // 7. CALCULATE & PRINT P&L
-        // ==================================================
-
-        console.log("");
-        console.log(
-            "===================================="
-        );
-        console.log(
-            "TRADEGUARD P&L SNAPSHOT"
-        );
-        console.log(
-            "===================================="
-        );
-
-        let totalUnrealised = 0;
-        let totalRealised = 0;
-
-        if (positions.length === 0) {
-
-            console.log(
-                "No open positions found."
-            );
-
-        } else {
-
-            for (const position of positions) {
-
-                const quantity =
-                    Number(position.quantity || 0);
-
-                const averagePrice =
-                    Number(position.average_price || 0);
-
-                const lastPrice =
-                    Number(position.last_price || 0);
-
-                const unrealised =
-                    Number(position.unrealised || 0);
-
-                const realised =
-                    Number(position.realised || 0);
-
-                totalUnrealised += unrealised;
-                totalRealised += realised;
-
-                console.log("");
-                console.log(
-                    `${position.trading_symbol}`
-                );
-
-                console.log(
-                    "------------------------------------"
-                );
-
-                console.log(
-                    "Quantity       :",
-                    quantity
-                );
-
-                console.log(
-                    "Average Price  : ₹",
-                    averagePrice
-                );
-
-                console.log(
-                    "Last Price     : ₹",
-                    lastPrice
-                );
-
-                console.log(
-                    "Unrealised P&L : ₹",
-                    unrealised
-                );
-
-                console.log(
-                    "Realised P&L   : ₹",
-                    realised
-                );
-            }
-        }
-
-        console.log("");
-        console.log(
-            "------------------------------------"
-        );
-
-        console.log(
-            "Total Unrealised P&L : ₹",
-            totalUnrealised
-        );
-
-        console.log(
-            "Total Realised P&L   : ₹",
-            totalRealised
-        );
-
-        console.log(
-            "Total P&L            : ₹",
-            totalUnrealised + totalRealised
-        );
-
-        console.log(
-            "===================================="
-        );
-=======
-const syncUpstoxTodayTrades = async ({
-    brokerAccountId
-}) => {
-
+const syncUpstoxTodayTrades = async ({ brokerAccountId }) => {
     if (!brokerAccountId) {
-        throw new Error(
-            "brokerAccountId is required"
-        );
+        throw new Error("brokerAccountId is required");
     }
 
+    const brokerAccount = await BrokerAccount.findById(brokerAccountId);
+    if (!brokerAccount) {
+        throw new Error("Broker account not found");
+    }
+    if (brokerAccount.broker !== "UPSTOX") {
+        throw new Error("Broker account is not an Upstox account");
+    }
+    if (!brokerAccount.isActive) {
+        throw new Error("Upstox broker account is inactive");
+    }
+    if (!brokerAccount.credentials?.accessToken) {
+        throw new Error("Upstox access token not found");
+    }
 
-    // Sync today's date through the standard flow so
-    // both the historical endpoint and the
-    // get-trades-for-day endpoint are used. The
-    // latter is the only one that returns order_id.
-    const now = new Date();
+    const accessToken = decrypt(brokerAccount.credentials.accessToken);
+    if (!accessToken) {
+        throw new Error("Failed to decrypt Upstox access token");
+    }
 
-    const dateStr =
-        now.toISOString().split("T")[0];
+    const upstox = new UpstoxAdapter(accessToken);
 
+    let todayTrades = [];
+    try {
+        todayTrades = await upstox.getTradesForDay();
+        if (!Array.isArray(todayTrades)) todayTrades = [];
+    } catch (err) {
+        console.warn("Could not fetch today trades from Upstox:", err.message);
+        todayTrades = [];
+    }
 
-    return syncUpstoxHistoricalTrades({
+    let inserted = 0;
+    let updated = 0;
+    let skipped = 0;
 
-        brokerAccountId,
+    for (const trade of todayTrades) {
+        try {
+            const mapped = mapUpstoxTrade(trade);
+            mapped.userId = brokerAccount.userId;
+            mapped.brokerAccountId = brokerAccount._id;
+            mapped.broker = "UPSTOX";
 
-        startDate: dateStr,
+            if (!mapped.tradeId) {
+                skipped++;
+                continue;
+            }
 
-        endDate: dateStr
+            const res = await TradeRecord.updateOne(
+                { brokerAccountId: brokerAccount._id, tradeId: mapped.tradeId },
+                { $set: mapped },
+                { upsert: true }
+            );
 
-    });
+            if (res.upsertedCount === 1) inserted++;
+            else updated++;
+        } catch (err) {
+            skipped++;
+        }
+    }
 
+    let positions = [];
+    try {
+        positions = await upstox.getPositions();
+    } catch (err) {
+        // ignore
+    }
+
+    return {
+        broker: "UPSTOX",
+        brokerAccountId: brokerAccount._id,
+        todayFetched: todayTrades.length,
+        inserted,
+        updated,
+        skipped,
+        positionsFetched: positions.length
+    };
 };
->>>>>>> f58628b137f99e49150c6ebc431390a2a149d03a
 
+// ==================================================
+// EXPORT
+// ==================================================
 
 export {
     syncUpstoxHistoricalTrades,
     syncUpstoxTodayTrades
-};
+};

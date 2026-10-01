@@ -21,8 +21,13 @@ const PORT = process.env.PORT || 5000;
 // --------------------
 
 const corsOptions = {
-    origin: 'http://localhost:3000',
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    origin: (origin, callback) => {
+        if (!origin || origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1')) {
+            return callback(null, true);
+        }
+        return callback(null, true);
+    },
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     credentials: true
 };
 

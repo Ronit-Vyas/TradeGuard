@@ -115,6 +115,12 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
+  verifyBrokerAccount: (id) =>
+    request(`/api/broker-accounts/${id}/verify`, {
+      method: 'POST',
+    }),
+
+
   // Trades
   listTrades: (userId = getStoredUserId()) =>
     request(withUserId('/api/trades', userId)),
@@ -124,6 +130,9 @@ export const api = {
 
   tradeAnalytics: (range = '30d', userId = getStoredUserId()) =>
     request(withUserId(`/api/trades/analytics?range=${encodeURIComponent(range)}`, userId)),
+
+  chargesAnalytics: (range = '30d', userId = getStoredUserId()) =>
+    request(withUserId(`/api/trades/charges-analytics?range=${encodeURIComponent(range)}`, userId)),
 
   instrumentDistribution: (userId = getStoredUserId()) =>
     request(withUserId('/api/trades/instrument-distribution', userId)),
@@ -142,6 +151,16 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+
+  liveTradingSummary: (userId = getStoredUserId()) =>
+    request(withUserId('/api/trades/live-summary', userId)),
 };
 
-export { ApiError };
+const WS_URL =
+  process.env.REACT_APP_WS_URL ||
+  (window.location.protocol === 'https:' ? 'wss:' : 'ws:') +
+    '//' +
+    (window.location.hostname || 'localhost') +
+    ':5000/ws/live';
+
+export { ApiError, WS_URL };

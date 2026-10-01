@@ -4,11 +4,15 @@ import { Search, Bell, User, Settings, LogOut, ChevronDown, Command } from 'luci
 import { useAuth } from '../context/AuthContext';
 
 export default function TopBar({ title, subtitle }) {
-  const { user, logout } = useAuth();
+  const { user, logout, brokerAccounts, refreshBrokerStatus } = useAuth();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
   const [query, setQuery] = useState('');
+
+  useEffect(() => {
+    refreshBrokerStatus?.();
+  }, [refreshBrokerStatus]);
 
   useEffect(() => {
     function onClick(e) {
@@ -17,6 +21,9 @@ export default function TopBar({ title, subtitle }) {
     document.addEventListener('mousedown', onClick);
     return () => document.removeEventListener('mousedown', onClick);
   }, []);
+
+  const hasConnectedBroker = Array.isArray(brokerAccounts) && brokerAccounts.some((a) => a.isConnected);
+  const brokerName = brokerAccounts?.find((a) => a.isConnected)?.broker || 'Broker';
 
   const initials = (user?.username || user?.email || 'NA')
     .split(' ')
@@ -33,6 +40,37 @@ export default function TopBar({ title, subtitle }) {
       </div>
 
       <div className="topbar-right">
+        {/* Live Broker Connection Badge */}
+        <div
+          onClick={() => navigate('/app/broker-accounts')}
+          title={hasConnectedBroker ? `${brokerName} Credentials Active & Verified` : 'Broker Token Expired or Not Connected. Click to update credentials.'}
+          style={{ cursor: 'pointer' }}
+        >
+          {hasConnectedBroker ? (
+            <span className="badge badge-success" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', fontSize: 12 }}>
+              <span className="badge-dot" />
+              {brokerName} Connected
+            </span>
+          ) : (
+            <span
+              className="badge"
+              style={{
+                background: 'rgba(239, 68, 68, 0.12)',
+                color: '#f87171',
+                border: '1px solid rgba(239, 68, 68, 0.25)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '5px 10px',
+                fontSize: 12
+              }}
+            >
+              <span className="badge-dot" style={{ background: '#ef4444' }} />
+              Broker Not Connected
+            </span>
+          )}
+        </div>
+
         <div className="search-box">
           <Search size={15} />
           <input

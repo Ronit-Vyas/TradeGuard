@@ -52,11 +52,15 @@ export default function Analytics() {
           <p className="page-description">Understand patterns behind your trading results.</p>
         </div>
         <select className="filter-select" value={range} onChange={(e) => setRange(e.target.value)}>
+          <option value="today">Today</option>
           <option value="7d">Last 7 days</option>
           <option value="30d">Last 30 days</option>
           <option value="90d">Last 90 days</option>
+          <option value="1y">Last 1 year</option>
+          <option value="all">All time</option>
         </select>
       </div>
+
 
       {showBanner && (
         <div className="info-banner" style={{ position: 'relative' }}>

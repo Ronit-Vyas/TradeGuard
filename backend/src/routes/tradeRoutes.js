@@ -7,11 +7,15 @@ import {
   getRiskExposures,
   getBrokerComparison,
   calculateTradeCharges,
-  getInstrumentDistribution
+  getInstrumentDistribution,
+  getLiveTradingSummary,
+  getChargesAnalytics
 } from "../controllers/tradeController.js";
 const router = express.Router();
 router.get("/", listTrades);
 router.get("/summary", getTradeSummary);
+router.get("/live-summary", getLiveTradingSummary);
+router.get("/charges-analytics", getChargesAnalytics);
 router.get("/analytics", getAnalytics);
 router.get("/reports", getReportData);
 router.get("/risk/exposures", getRiskExposures);

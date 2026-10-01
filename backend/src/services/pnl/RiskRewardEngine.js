@@ -1,75 +1,66 @@
-class RiskRewardEngine {
+/**
+ * RiskRewardEngine.js
+ * 
+ * Standalone risk/reward calculator module (ES Modules).
+ */
 
+export class RiskRewardEngine {
     calculate({
-        side,
+        side = "BUY",
         entryPrice,
         stopLoss,
         target,
-        ltp
+        ltp,
+        quantity = 1
     }) {
+        const entry = Number(entryPrice);
+        const sl = Number(stopLoss);
+        const tgt = Number(target);
+        const currentPrice = Number(ltp ?? entryPrice);
+        const qty = Math.abs(Number(quantity) || 1);
 
-        entryPrice = Number(entryPrice);
-        stopLoss = Number(stopLoss);
-        target = Number(target);
-        ltp = Number(ltp);
-
-        if (
-            !entryPrice ||
-            !stopLoss ||
-            !target ||
-            !ltp
-        ) {
+        if (!entry || !sl || !tgt) {
             return null;
         }
 
-        let risk;
-        let reward;
+        const isLong = side === "BUY" || side === "LONG";
+        let riskPerUnit = 0;
+        let rewardPerUnit = 0;
 
-        if (side === "BUY") {
-
-            risk =
-                entryPrice - stopLoss;
-
-            reward =
-                target - entryPrice;
-
+        if (isLong) {
+            riskPerUnit = entry - sl;
+            rewardPerUnit = tgt - entry;
         } else {
-
-            risk =
-                stopLoss - entryPrice;
-
-            reward =
-                entryPrice - target;
+            riskPerUnit = sl - entry;
+            rewardPerUnit = entry - tgt;
         }
 
-        if (risk <= 0 || reward <= 0) {
-            return null;
-        }
+        if (riskPerUnit <= 0) riskPerUnit = 0.01;
+        if (rewardPerUnit <= 0) rewardPerUnit = 0.01;
+
+        const initialRR = Math.round((rewardPerUnit / riskPerUnit + Number.EPSILON) * 100) / 100;
+        const riskAmount = Math.round((riskPerUnit * qty + Number.EPSILON) * 100) / 100;
+        const rewardAmount = Math.round((rewardPerUnit * qty + Number.EPSILON) * 100) / 100;
+
+        let distanceToStopLoss = isLong ? currentPrice - sl : sl - currentPrice;
+        let distanceToTarget = isLong ? tgt - currentPrice : currentPrice - tgt;
 
         return {
-            entryPrice,
-            stopLoss,
-            target,
-            ltp,
-
-            initialRisk: risk,
-
-            initialReward: reward,
-
-            initialRiskReward:
-                reward / risk,
-
-            distanceToStopLoss:
-                side === "BUY"
-                    ? ltp - stopLoss
-                    : stopLoss - ltp,
-
-            distanceToTarget:
-                side === "BUY"
-                    ? target - ltp
-                    : ltp - target
+            entryPrice: entry,
+            stopLoss: sl,
+            target: tgt,
+            ltp: currentPrice,
+            quantity: qty,
+            initialRisk: Math.round((riskPerUnit + Number.EPSILON) * 100) / 100,
+            initialReward: Math.round((rewardPerUnit + Number.EPSILON) * 100) / 100,
+            riskAmount,
+            rewardAmount,
+            initialRiskReward: initialRR,
+            ratioText: `1:${initialRR}`,
+            distanceToStopLoss: Math.round((distanceToStopLoss + Number.EPSILON) * 100) / 100,
+            distanceToTarget: Math.round((distanceToTarget + Number.EPSILON) * 100) / 100
         };
     }
 }
 
-module.exports = new RiskRewardEngine();
+export default new RiskRewardEngine();

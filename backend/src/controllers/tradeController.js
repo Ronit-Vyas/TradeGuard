@@ -3,6 +3,8 @@ import TradeRecord from "../models/TradeRecord.js";
 import BrokerAccount from "../models/BrokerAccount.js";
 import { calculateCharges, calculatePnL } from "../services/calculations.js";
 import brokerConfig from "../services/brokers/brokerConfig.js";
+import positionEngine from "../services/position/PositionEngine.js";
+import pnlEngine from "../services/pnl/PnLEngine.js";
 
 const getUserId = (req, res) => {
   const userId = req.query.userId || req.params.userId;
@@ -76,12 +78,17 @@ function effectiveTradeDate(t) {
   return parsed && !Number.isNaN(parsed.getTime()) ? parsed : null;
 }
 
+export function getEffectivePrice(t) {
+  const p = Number(t.executedPrice ?? t.brokerResponse?.price ?? t.price);
+  return Number.isFinite(p) ? p : 0;
+}
+
 // FIFO matching of executions; only closed quantity contributes realized P&L.
 function buildRealizedMatches(records) {
   const queues = new Map();
   const closes = [];
   const ordered = [...records].filter(t => effectiveTradeDate(t) &&
-    Number(t.quantity) > 0 && Number(t.executedPrice) >= 0)
+    Number(t.quantity) > 0 && getEffectivePrice(t) > 0)
     .sort((a,b) => effectiveTradeDate(a)-effectiveTradeDate(b));
   for (const t of ordered) {
     const key = [String(t.brokerAccountId || ""), t.exchange || "", t.segment || "",
@@ -91,18 +98,19 @@ function buildRealizedMatches(records) {
     const signedQty = side === "BUY" ? Number(t.quantity) : -Number(t.quantity);
     let remaining = Math.abs(signedQty);
     const queue = queues.get(key) || [];
+    const execPrice = getEffectivePrice(t);
     while (remaining > 0 && queue.length && Math.sign(queue[0].qty) !== Math.sign(signedQty)) {
       const lot = queue[0];
       const matched = Math.min(remaining, Math.abs(lot.qty));
-      const pnl = (Number(t.executedPrice) - lot.price) * matched * (lot.qty > 0 ? 1 : -1);
+      const pnl = (execPrice - lot.price) * matched * (lot.qty > 0 ? 1 : -1);
       closes.push({ pnl, quantity: matched, broker: t.broker || "UNKNOWN",
         date: effectiveTradeDate(t), symbol: t.symbol, entryPrice: lot.price,
-        exitPrice: Number(t.executedPrice) });
+        exitPrice: execPrice });
       lot.qty += Math.sign(signedQty) * matched;
       remaining -= matched;
       if (Math.abs(lot.qty) < 1e-9) queue.shift();
     }
-    if (remaining > 0) queue.push({ qty: Math.sign(signedQty) * remaining, price: Number(t.executedPrice) });
+    if (remaining > 0) queue.push({ qty: Math.sign(signedQty) * remaining, price: execPrice });
     queues.set(key, queue);
   }
   return closes;
@@ -114,14 +122,31 @@ export const getAnalytics = async (req, res) => {
     if (!userId) return;
     const objectId = new mongoose.Types.ObjectId(userId);
     const now = new Date();
-    const range = req.query.range || "30d";
-    const days = range === "7d" ? 7 : range === "90d" ? 90 : 30;
-    const cutoff = new Date(now.getTime() - days * 86400000);
+    const range = String(req.query.range || "30d").toLowerCase();
+
+    let cutoff;
+    if (range === "today" || range === "1d") {
+      cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    } else if (range === "7d" || range === "1w") {
+      cutoff = new Date(now.getTime() - 7 * 86400000);
+    } else if (range === "30d" || range === "1m") {
+      cutoff = new Date(now.getTime() - 30 * 86400000);
+    } else if (range === "90d" || range === "3m") {
+      cutoff = new Date(now.getTime() - 90 * 86400000);
+    } else if (range === "1y" || range === "365d") {
+      cutoff = new Date(now.getTime() - 365 * 86400000);
+    } else if (range === "all") {
+      cutoff = new Date(0);
+    } else {
+      cutoff = new Date(now.getTime() - 30 * 86400000);
+    }
+
     const all = await TradeRecord.find({ userId: objectId, status: "COMPLETE" }).lean();
     const trades = all.filter(t => {
       const d = effectiveTradeDate(t);
       return d && d >= cutoff && d <= now;
     }).sort((a,b) => effectiveTradeDate(a)-effectiveTradeDate(b));
+
     // Include pre-range executions so positions opened earlier can be matched to exits in range.
     const closes = buildRealizedMatches(all).filter(c => c.date >= cutoff && c.date <= now);
     const byDay = new Map();
@@ -134,17 +159,38 @@ export const getAnalytics = async (req, res) => {
       running += pnl;
       return { date: new Date(`${date}T12:00:00`).toLocaleDateString("en-IN",{day:"2-digit",month:"short"}), value: Math.round(running) };
     });
+
+    // Adaptive Period breakdown (weeks / quarters / months / intraday hours)
     const weeklyPnL = [];
-    for (let i=3;i>=0;i--) {
-      const weekStart = new Date(now.getTime() - (i+1)*7*86400000);
-      const weekEnd = new Date(now.getTime() - i*7*86400000);
-      const matched = closes.filter(c=>c.date>=weekStart && c.date<weekEnd);
-      weeklyPnL.push({ label:`Week ${4-i}`,
-        wins: Math.round(matched.filter(c=>c.pnl>0).reduce((s,c)=>s+c.pnl,0)),
-        losses: Math.round(matched.filter(c=>c.pnl<0).reduce((s,c)=>s+c.pnl,0)) });
+    const totalSpanMs = Math.max(now.getTime() - cutoff.getTime(), 86400000);
+    const periodSliceMs = totalSpanMs / 4;
+
+    for (let i = 3; i >= 0; i--) {
+      const pStart = new Date(now.getTime() - (i + 1) * periodSliceMs);
+      const pEnd = new Date(now.getTime() - i * periodSliceMs);
+      const matched = closes.filter(c => c.date >= pStart && c.date < pEnd);
+
+      let label = `P${4 - i}`;
+      if (range === "today" || range === "1d") {
+        label = i === 3 ? "Morning" : i === 2 ? "Midday" : i === 1 ? "Afternoon" : "Closing";
+      } else if (range === "1y" || range === "365d" || range === "all") {
+        label = `Q${4 - i}`;
+      } else if (range === "90d") {
+        label = `Period ${4 - i}`;
+      } else {
+        label = `Week ${4 - i}`;
+      }
+
+      weeklyPnL.push({
+        label,
+        wins: Math.round(matched.filter(c => c.pnl > 0).reduce((s, c) => s + c.pnl, 0)),
+        losses: Math.round(matched.filter(c => c.pnl < 0).reduce((s, c) => s + c.pnl, 0))
+      });
     }
+
     const brokerMap = new Map();
     for (const c of closes) brokerMap.set(c.broker,(brokerMap.get(c.broker)||0)+c.pnl);
+
     const brokerPnL = [...brokerMap.entries()].map(([broker,value])=>({
       broker,name:brokerConfig.brokers[broker]?.name||broker,value:Math.round(value)
     }));
@@ -316,3 +362,203 @@ export const calculateTradeCharges = async (req,res) => {
       assumptions:{broker,productType:key,exchange,quantity:qty,brokeragePlan:cfg.brokeragePlan||"configured rates",note:"Estimate from local brokerConfig; verify current broker/exchange rates before relying on it."}}});
   }catch(error){console.error("Calculate charges error:",error.message);return res.status(500).json({success:false,message:error.message||"Failed to calculate charges"});}
 };
+
+export const getLiveTradingSummary = async (req, res) => {
+  try {
+    const userId = getUserId(req, res);
+    if (!userId) return;
+
+    let trades = await TradeRecord.find({
+      userId: new mongoose.Types.ObjectId(userId),
+      status: "COMPLETE"
+    }).lean();
+
+    if (!trades || trades.length === 0) {
+      trades = await TradeRecord.find({}).limit(50).lean();
+    }
+
+    const allPositions = positionEngine.processTrades(trades);
+    const openPositions = positionEngine.getOpenPositions(trades);
+    const squaredPositions = positionEngine.getFullySquaredPositions(trades);
+
+    pnlEngine.setPositions(userId, openPositions);
+    const calculated = pnlEngine.calculate(userId);
+
+    return res.json({
+      success: true,
+      data: {
+        ...calculated,
+        allPositions,
+        squaredPositions
+      }
+    });
+  } catch (error) {
+    console.error("Live trading summary error:", error.message);
+    return res.status(500).json({ success: false, message: "Failed to fetch live trading summary" });
+  }
+};
+
+export const getChargesAnalytics = async (req, res) => {
+  try {
+    const userId = getUserId(req, res);
+    if (!userId) return;
+    const objectId = new mongoose.Types.ObjectId(userId);
+    const now = new Date();
+    const range = String(req.query.range || "30d").toLowerCase();
+
+    let cutoff;
+    if (range === "today" || range === "1d") {
+      cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    } else if (range === "7d" || range === "1w") {
+      cutoff = new Date(now.getTime() - 7 * 86400000);
+    } else if (range === "30d" || range === "1m") {
+      cutoff = new Date(now.getTime() - 30 * 86400000);
+    } else if (range === "90d" || range === "3m") {
+      cutoff = new Date(now.getTime() - 90 * 86400000);
+    } else if (range === "1y" || range === "365d") {
+      cutoff = new Date(now.getTime() - 365 * 86400000);
+    } else if (range === "all") {
+      cutoff = new Date(0);
+    } else {
+      cutoff = new Date(now.getTime() - 30 * 86400000);
+    }
+
+    let allTrades = await TradeRecord.find({ userId: objectId, status: "COMPLETE" }).lean();
+    if (!allTrades || allTrades.length === 0) {
+      allTrades = await TradeRecord.find({ userId: objectId }).lean();
+    }
+
+    const tradesInRange = allTrades.filter(t => {
+      const d = effectiveTradeDate(t);
+      return d && d >= cutoff && d <= now;
+    }).sort((a, b) => effectiveTradeDate(b) - effectiveTradeDate(a));
+
+    let totalTurnover = 0;
+    let totalBrokerage = 0;
+    let totalSTT = 0;
+    let totalGST = 0;
+    let totalExchange = 0;
+    let totalCTT = 0;
+    let totalSEBI = 0;
+    let totalStampDuty = 0;
+    let totalDP = 0;
+    let totalCharges = 0;
+
+    const symbolCharges = new Map();
+    const dailyCharges = new Map();
+
+    const tradesWithCharges = tradesInRange.map(t => {
+      const execPrice = getEffectivePrice(t);
+      const qty = Number(t.quantity) || 0;
+      const charges = pnlEngine.calculateTradeFillCharges({
+        symbol: t.symbol,
+        exchange: t.exchange || "NSE",
+        segment: t.segment || "EQUITY",
+        productType: t.productCode || "INTRADAY",
+        transactionType: t.transactionType || "BUY",
+        quantity: qty,
+        price: execPrice,
+        broker: t.broker || "UPSTOX"
+      });
+
+      totalTurnover += charges.turnover;
+      totalBrokerage += charges.brokerage;
+      totalSTT += charges.stt;
+      totalGST += charges.gst;
+      totalExchange += charges.exchangeCharges;
+      totalCTT += charges.ctt;
+      totalSEBI += charges.sebiCharges;
+      totalStampDuty += charges.stampDuty;
+      totalDP += charges.dpCharges;
+      totalCharges += charges.total;
+
+      const sym = t.symbol || "OTHER";
+      symbolCharges.set(sym, (symbolCharges.get(sym) || 0) + charges.total);
+
+      const d = effectiveTradeDate(t);
+      if (d) {
+        const dayKey = d.toISOString().slice(0, 10);
+        dailyCharges.set(dayKey, (dailyCharges.get(dayKey) || 0) + charges.total);
+      }
+
+      return {
+        _id: t._id,
+        tradeId: t.tradeId,
+        orderId: t.orderId,
+        symbol: t.symbol,
+        transactionType: t.transactionType,
+        quantity: qty,
+        price: execPrice,
+        turnover: charges.turnover,
+        tradeTime: d,
+        segment: t.segment,
+        exchange: t.exchange,
+        broker: t.broker,
+        charges
+      };
+    });
+
+    const closes = buildRealizedMatches(allTrades).filter(c => c.date >= cutoff && c.date <= now);
+    const grossPnL = closes.reduce((sum, c) => sum + c.pnl, 0);
+    const netPnL = grossPnL - totalCharges;
+
+    const timeline = [...dailyCharges.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, amount]) => ({
+        date: new Date(`${date}T12:00:00`).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }),
+        charges: Math.round(amount * 100) / 100
+      }));
+
+    const topSymbols = [...symbolCharges.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([symbol, charges]) => ({
+        symbol,
+        charges: Math.round(charges * 100) / 100,
+        percentage: totalCharges > 0 ? Math.round((charges / totalCharges) * 1000) / 10 : 0
+      }));
+
+    const round = n => Math.round((n + Number.EPSILON) * 100) / 100;
+
+    return res.json({
+      success: true,
+      data: {
+        range,
+        totalTrades: tradesInRange.length,
+        totalTurnover: round(totalTurnover),
+        grossPnL: round(grossPnL),
+        netPnL: round(netPnL),
+        totalCharges: round(totalCharges),
+        breakdown: {
+          brokerage: round(totalBrokerage),
+          stt: round(totalSTT),
+          gst: round(totalGST),
+          exchangeCharges: round(totalExchange),
+          ctt: round(totalCTT),
+          sebiCharges: round(totalSEBI),
+          stampDuty: round(totalStampDuty),
+          dpCharges: round(totalDP)
+        },
+        percentages: {
+          brokerage: totalCharges > 0 ? round((totalBrokerage / totalCharges) * 100) : 0,
+          stt: totalCharges > 0 ? round((totalSTT / totalCharges) * 100) : 0,
+          gst: totalCharges > 0 ? round((totalGST / totalCharges) * 100) : 0,
+          exchangeCharges: totalCharges > 0 ? round((totalExchange / totalCharges) * 100) : 0,
+          ctt: totalCharges > 0 ? round((totalCTT / totalCharges) * 100) : 0,
+          sebiCharges: totalCharges > 0 ? round((totalSEBI / totalCharges) * 100) : 0,
+          stampDuty: totalCharges > 0 ? round((totalStampDuty / totalCharges) * 100) : 0,
+          dpCharges: totalCharges > 0 ? round((totalDP / totalCharges) * 100) : 0
+        },
+        chargesToTurnoverPercent: totalTurnover > 0 ? round((totalCharges / totalTurnover) * 100) : 0,
+        avgChargePerTrade: tradesInRange.length > 0 ? round(totalCharges / tradesInRange.length) : 0,
+        timeline,
+        topSymbols,
+        recentTrades: tradesWithCharges.slice(0, 50)
+      }
+    });
+  } catch (error) {
+    console.error("Charges analytics error:", error.message);
+    return res.status(500).json({ success: false, message: "Failed to calculate charges analytics" });
+  }
+};
+

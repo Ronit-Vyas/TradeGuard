@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Card, StatCard } from '../components/Card';
-import { Info, X } from 'lucide-react';
+import { Info, X, Zap, Activity, ShieldAlert, ArrowRight, Receipt, Scale } from 'lucide-react';
 import { api } from '../api/client';
+import { useLiveTrading } from '../hooks/useLiveTrading';
 import DonutChart from '../components/charts/DonutChart';
 
 const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#f97316', '#84cc16'];
@@ -51,6 +53,7 @@ function getPrice(trade) {
 }
 
 export default function Overview() {
+  const liveData = useLiveTrading();
   const [range, setRange] = useState('30d');
   const [drawerTrade, setDrawerTrade] = useState(null);
   const [showBanner, setShowBanner] = useState(true);
@@ -177,25 +180,85 @@ export default function Overview() {
         </select>
       </div>
 
-      {showBanner && (
-        <div className="info-banner" style={{ position: 'relative' }}>
-          <Info size={15} />
-          <span>
-            Dashboard values are loaded from your saved TradeGuard records.
-            P&amp;L and risk metrics are not shown until they are calculated
-            from matched trades and configured risk limits.
-          </span>
+      {/* Live Trading Ticker Bar */}
+      <div className="overview-live-bar" style={{ marginBottom: 24 }}>
+        <div className="overview-live-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span className={`live-ws-pill ${liveData.isConnected ? 'connected' : 'connecting'}`}>
+              <span className="live-ws-pulse" />
+              {liveData.isConnected ? 'WebSocket Live' : 'Connecting WS...'}
+            </span>
+            <span style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: 14 }}>
+              Live Trading Engine Feed
+            </span>
+          </div>
 
-          <button
-            className="icon-btn"
-            aria-label="Dismiss information"
-            style={{ marginLeft: 'auto', width: 24, height: 24 }}
-            onClick={() => setShowBanner(false)}
+          <Link
+            to="/app/live"
+            className="btn btn-secondary btn-sm"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '4px 10px' }}
           >
-            <X size={14} />
-          </button>
+            <span>Open Terminal</span>
+            <ArrowRight size={13} />
+          </Link>
         </div>
-      )}
+
+        <div className="overview-live-stats-row">
+          <div className="overview-live-item">
+            <span className="overview-live-label">Live Unrealized P&amp;L</span>
+            <span
+              className={`mono overview-live-val ${
+                liveData.portfolioSummary.totalUnrealizedPnL >= 0 ? 'text-emerald' : 'text-rose'
+              }`}
+            >
+              {formatINR(liveData.portfolioSummary.totalUnrealizedPnL)}
+            </span>
+          </div>
+
+          <div className="overview-live-item">
+            <span className="overview-live-label">Gross P&amp;L</span>
+            <span
+              className={`mono overview-live-val ${
+                liveData.portfolioSummary.totalGrossPnL >= 0 ? 'text-emerald' : 'text-rose'
+              }`}
+            >
+              {formatINR(liveData.portfolioSummary.totalGrossPnL)}
+            </span>
+          </div>
+
+          <div className="overview-live-item">
+            <span className="overview-live-label">Total Charges (8 Fees)</span>
+            <span className="mono overview-live-val" style={{ color: '#fbbf24' }}>
+              {formatINR(liveData.portfolioSummary.totalCharges?.total)}
+            </span>
+          </div>
+
+          <div className="overview-live-item">
+            <span className="overview-live-label">Net P&amp;L</span>
+            <span
+              className={`mono overview-live-val ${
+                liveData.portfolioSummary.totalNetPnL >= 0 ? 'text-emerald' : 'text-rose'
+              }`}
+            >
+              {formatINR(liveData.portfolioSummary.totalNetPnL)}
+            </span>
+          </div>
+
+          <div className="overview-live-item">
+            <span className="overview-live-label">Risk Amount (SL)</span>
+            <span className="mono overview-live-val" style={{ color: '#f87171' }}>
+              {formatINR(liveData.portfolioSummary.totalRiskAmount)}
+            </span>
+          </div>
+
+          <div className="overview-live-item">
+            <span className="overview-live-label">Live Risk / Reward</span>
+            <span className="mono overview-live-val" style={{ color: '#c4b5fd' }}>
+              {liveData.portfolioSummary.portfolioRiskRewardText || '1:2.0'}
+            </span>
+          </div>
+        </div>
+      </div>
 
       {error && (
         <div className="info-banner" role="alert">

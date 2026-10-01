@@ -62,17 +62,27 @@ export default function BrokerAccounts() {
     }
   }
 
-  async function handleConnect(id) {
-    setSyncingId(id);
+  const [verifyingId, setVerifyingId] = useState(null);
+
+  async function handleVerify(id) {
+    setVerifyingId(id);
     try {
-      await api.updateBrokerAccount(id, { isConnected: true, lastConnectedAt: new Date().toISOString() });
-      toast.push('Broker account connected', 'success');
+      const res = await api.verifyBrokerAccount(id);
+      if (res.isConnected) {
+        toast.push('Credentials verified — Broker account is connected!', 'success');
+      } else {
+        toast.push('Broker access token is expired or invalid. Please update credentials.', 'warning');
+      }
       await load();
     } catch (err) {
-      toast.push(err.message || 'Failed to connect', 'error');
+      toast.push(err.message || 'Failed to verify broker account', 'error');
     } finally {
-      setSyncingId(null);
+      setVerifyingId(null);
     }
+  }
+
+  async function handleConnect(id) {
+    navigate(`/app/broker-accounts/${id}/edit`);
   }
 
   return (
@@ -159,11 +169,11 @@ export default function BrokerAccounts() {
                     </span>
                   ) : connected ? (
                     <span className="badge badge-success">
-                      <span className="badge-dot" /> Connected
+                      <span className="badge-dot" /> Connected &amp; Valid
                     </span>
                   ) : (
-                    <span className="badge badge-neutral">
-                      <span className="badge-dot" /> Not connected
+                    <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.12)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.25)' }}>
+                      <span className="badge-dot" style={{ background: '#ef4444' }} /> Not Connected (Token Expired)
                     </span>
                   )}
                 </div>
@@ -178,7 +188,7 @@ export default function BrokerAccounts() {
                     </span>
                   </div>
                   <div className="broker-meta">
-                    <span>Last sync</span>
+                    <span>Last verified</span>
                     <span>
                       {acc.lastConnectedAt
                         ? new Date(acc.lastConnectedAt).toLocaleString('en-GB', {
@@ -192,21 +202,31 @@ export default function BrokerAccounts() {
                   </div>
                 </div>
 
-                <div className="broker-actions">
+                <div className="broker-actions" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <button
                     className={`btn ${actionNeeded || !connected ? 'btn-primary' : 'btn-secondary'} w-full`}
                     onClick={() => connected ? handleSync(acc._id) : handleConnect(acc._id)}
                     disabled={syncing}
                   >
                     {syncing ? (
-                      <><span className="spinner" /> Connecting…</>
+                      <><span className="spinner" /> Syncing trades…</>
                     ) : connected ? (
                       <><RefreshCw size={14} /> Sync trades</>
                     ) : (
-                      <><Link2 size={14} /> Connect</>
+                      <><Link2 size={14} /> Update Credentials / Token</>
                     )}
                   </button>
+
+                  <button
+                    className="btn btn-secondary w-full"
+                    style={{ fontSize: 12, padding: '6px 12px' }}
+                    onClick={() => handleVerify(acc._id)}
+                    disabled={verifyingId === acc._id}
+                  >
+                    {verifyingId === acc._id ? 'Checking with Broker API...' : 'Test Broker Live Status'}
+                  </button>
                 </div>
+
               </div>
             );
           })}

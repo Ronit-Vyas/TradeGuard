@@ -11,6 +11,7 @@ import ForgotPassword from './pages/auth/ForgotPassword';
 import ResetPassword from './pages/auth/ResetPassword';
 
 import Overview from './pages/Overview';
+import LiveTrading from './pages/LiveTrading';
 import BrokerAccounts from './pages/BrokerAccounts';
 import BrokerAccountForm from './pages/BrokerAccountForm';
 import Trades from './pages/Trades';
@@ -37,6 +38,7 @@ function Protected({ children }) {
 }
 
 const PAGE_META = {
+  live: { title: 'Live Trading', subtitle: 'Real-time WebSocket market feed · Upstox stream' },
   overview: { title: 'Overview', subtitle: 'Sample workspace · Last reviewed 28 Sep 2026' },
   'broker-accounts': { title: 'Broker Accounts', subtitle: 'Sample workspace · Last reviewed 28 Sep 2026' },
   trades: { title: 'Trades', subtitle: 'Sample workspace · Last reviewed 28 Sep 2026' },
@@ -65,6 +67,7 @@ function AppRoutes() {
 
       <Route path="/app" element={<Protected><Navigate to="/app/overview" replace /></Protected>} />
 
+      <Route path="/app/live" element={<Protected><AppPage page="live"><LiveTrading /></AppPage></Protected>} />
       <Route path="/app/overview" element={<Protected><AppPage page="overview"><Overview /></AppPage></Protected>} />
       <Route path="/app/broker-accounts" element={<Protected><AppPage page="broker-accounts"><BrokerAccounts /></AppPage></Protected>} />
       <Route path="/app/broker-accounts/new" element={<Protected><AppPage page="broker-accounts"><BrokerAccountForm /></AppPage></Protected>} />
