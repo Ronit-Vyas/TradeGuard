@@ -137,8 +137,13 @@ export const api = {
   instrumentDistribution: (userId = getStoredUserId()) =>
     request(withUserId('/api/trades/instrument-distribution', userId)),
 
-  tradeReports: (userId = getStoredUserId()) =>
-    request(withUserId('/api/trades/reports', userId)),
+  tradeReports: (range = '30d', broker = 'all', userId = getStoredUserId()) => {
+    let path = `/api/trades/reports?range=${encodeURIComponent(range)}`;
+    if (broker && broker !== 'all') {
+      path += `&broker=${encodeURIComponent(broker)}`;
+    }
+    return request(withUserId(path, userId));
+  },
 
   riskExposures: (userId = getStoredUserId()) =>
     request(withUserId('/api/trades/risk/exposures', userId)),

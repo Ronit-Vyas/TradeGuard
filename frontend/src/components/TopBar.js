@@ -22,8 +22,9 @@ export default function TopBar({ title, subtitle }) {
     return () => document.removeEventListener('mousedown', onClick);
   }, []);
 
-  const hasConnectedBroker = Array.isArray(brokerAccounts) && brokerAccounts.some((a) => a.isConnected);
-  const brokerName = brokerAccounts?.find((a) => a.isConnected)?.broker || 'Broker';
+  const connectedBrokers = Array.isArray(brokerAccounts) ? brokerAccounts.filter((a) => a.isConnected) : [];
+  const hasConnectedBroker = connectedBrokers.length > 0;
+  const brokerName = connectedBrokers.map(b => b.broker === 'KOTAK_NEO' ? 'Kotak Neo' : b.broker === 'UPSTOX' ? 'Upstox' : (b.broker || 'Broker')).join(' & ');
 
   const initials = (user?.username || user?.email || 'NA')
     .split(' ')

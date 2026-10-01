@@ -160,32 +160,98 @@ export const getAnalytics = async (req, res) => {
       return { date: new Date(`${date}T12:00:00`).toLocaleDateString("en-IN",{day:"2-digit",month:"short"}), value: Math.round(running) };
     });
 
-    // Adaptive Period breakdown (weeks / quarters / months / intraday hours)
+    // Real date-aligned Win and Loss Period breakdown (calendar months for 1y/all, weekly for 30d, daily for 7d)
     const weeklyPnL = [];
-    const totalSpanMs = Math.max(now.getTime() - cutoff.getTime(), 86400000);
-    const periodSliceMs = totalSpanMs / 4;
 
-    for (let i = 3; i >= 0; i--) {
-      const pStart = new Date(now.getTime() - (i + 1) * periodSliceMs);
-      const pEnd = new Date(now.getTime() - i * periodSliceMs);
-      const matched = closes.filter(c => c.date >= pStart && c.date < pEnd);
-
-      let label = `P${4 - i}`;
-      if (range === "today" || range === "1d") {
-        label = i === 3 ? "Morning" : i === 2 ? "Midday" : i === 1 ? "Afternoon" : "Closing";
-      } else if (range === "1y" || range === "365d" || range === "all") {
-        label = `Q${4 - i}`;
-      } else if (range === "90d") {
-        label = `Period ${4 - i}`;
+    if (range === "today" || range === "1d") {
+      const sessions = [
+        { label: "09:15 - 11:30", startHour: 9, startMin: 15, endHour: 11, endMin: 30 },
+        { label: "11:30 - 13:30", startHour: 11, startMin: 30, endHour: 13, endMin: 30 },
+        { label: "13:30 - 15:30", startHour: 13, startMin: 30, endHour: 15, endMin: 30 }
+      ];
+      for (const s of sessions) {
+        const pStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), s.startHour, s.startMin);
+        const pEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), s.endHour, s.endMin);
+        const matched = closes.filter(c => c.date >= pStart && c.date <= pEnd);
+        weeklyPnL.push({
+          label: s.label,
+          dateRange: `Today ${s.label}`,
+          wins: Math.round(matched.filter(c => c.pnl > 0).reduce((sum, c) => sum + c.pnl, 0)),
+          losses: Math.round(Math.abs(matched.filter(c => c.pnl < 0).reduce((sum, c) => sum + c.pnl, 0)))
+        });
+      }
+    } else if (range === "7d" || range === "1w") {
+      for (let i = 6; i >= 0; i--) {
+        const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+        const dStart = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, 0, 0);
+        const dEnd = new Date(day.getFullYear(), day.getMonth(), day.getDate(), 23, 59, 59, 999);
+        const matched = closes.filter(c => c.date >= dStart && c.date <= dEnd);
+        const label = day.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+        weeklyPnL.push({
+          label,
+          dateRange: day.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }),
+          wins: Math.round(matched.filter(c => c.pnl > 0).reduce((sum, c) => sum + c.pnl, 0)),
+          losses: Math.round(Math.abs(matched.filter(c => c.pnl < 0).reduce((sum, c) => sum + c.pnl, 0)))
+        });
+      }
+    } else if (range === "30d" || range === "1m") {
+      const daysPerSlice = 7;
+      for (let i = 3; i >= 0; i--) {
+        const pStart = new Date(now.getTime() - (i + 1) * daysPerSlice * 86400000);
+        const pEnd = new Date(now.getTime() - i * daysPerSlice * 86400000);
+        const matched = closes.filter(c => c.date >= pStart && c.date < pEnd);
+        const label = `${pStart.toLocaleDateString("en-IN", { day: "2-digit", month: "short" })} - ${pEnd.toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}`;
+        weeklyPnL.push({
+          label,
+          dateRange: `${pStart.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })} to ${pEnd.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}`,
+          wins: Math.round(matched.filter(c => c.pnl > 0).reduce((sum, c) => sum + c.pnl, 0)),
+          losses: Math.round(Math.abs(matched.filter(c => c.pnl < 0).reduce((sum, c) => sum + c.pnl, 0)))
+        });
+      }
+    } else {
+      // 1y, 365d, fy, all, 90d -> Calendar Month Grouping!
+      let startMonthDate;
+      if (range === "all") {
+        if (closes.length > 0) {
+          const earliest = Math.min(...closes.map(c => c.date.getTime()));
+          startMonthDate = new Date(earliest);
+        } else {
+          startMonthDate = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+        }
+      } else if (range === "fy") {
+        const fyYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+        startMonthDate = new Date(fyYear, 3, 1);
+      } else if (range === "90d" || range === "3m") {
+        startMonthDate = new Date(now.getFullYear(), now.getMonth() - 3, 1);
       } else {
-        label = `Week ${4 - i}`;
+        startMonthDate = new Date(now.getFullYear() - 1, now.getMonth() + 1, 1);
       }
 
-      weeklyPnL.push({
-        label,
-        wins: Math.round(matched.filter(c => c.pnl > 0).reduce((s, c) => s + c.pnl, 0)),
-        losses: Math.round(matched.filter(c => c.pnl < 0).reduce((s, c) => s + c.pnl, 0))
-      });
+      const cur = new Date(startMonthDate.getFullYear(), startMonthDate.getMonth(), 1);
+      const endMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+      while (cur <= endMonth) {
+        const mStart = new Date(cur.getFullYear(), cur.getMonth(), 1, 0, 0, 0);
+        const mEnd = new Date(cur.getFullYear(), cur.getMonth() + 1, 0, 23, 59, 59, 999);
+        const matched = closes.filter(c => c.date >= mStart && c.date <= mEnd);
+        const label = cur.toLocaleDateString("en-IN", { month: "short", year: "2-digit" });
+        const fullLabel = cur.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+
+        weeklyPnL.push({
+          label,
+          dateRange: fullLabel,
+          wins: Math.round(matched.filter(c => c.pnl > 0).reduce((sum, c) => sum + c.pnl, 0)),
+          losses: Math.round(Math.abs(matched.filter(c => c.pnl < 0).reduce((sum, c) => sum + c.pnl, 0)))
+        });
+
+        cur.setMonth(cur.getMonth() + 1);
+      }
+
+      if (weeklyPnL.length > 12) {
+        const sliced = weeklyPnL.slice(-12);
+        weeklyPnL.length = 0;
+        weeklyPnL.push(...sliced);
+      }
     }
 
     const brokerMap = new Map();
@@ -234,24 +300,150 @@ export const getInstrumentDistribution = async (req, res) => {
   }catch(error){console.error("Instrument distribution error:",error.message);return res.status(500).json({success:false,message:"Failed to fetch instrument distribution"});}
 };
 
-export const getReportData = async (req,res) => {
+export const getReportData = async (req, res) => {
   try {
-    const userId=getUserId(req,res); if(!userId)return;
-    const now=new Date(), cutoff=new Date(now.getTime()-30*86400000);
-    const all=await TradeRecord.find({userId:new mongoose.Types.ObjectId(userId),status:"COMPLETE"}).lean();
-    const trades=all.filter(t=>{const d=effectiveTradeDate(t);return d&&d>=cutoff&&d<=now;});
-    const closes=buildRealizedMatches(all).filter(c=>c.date>=cutoff&&c.date<=now);
-    const wins=closes.filter(c=>c.pnl>0), losses=closes.filter(c=>c.pnl<0);
-    const pnl=closes.reduce((s,c)=>s+c.pnl,0);
-    const brokers=new Map(); for(const c of closes)brokers.set(c.broker,(brokers.get(c.broker)||0)+c.pnl);
-    const brokerBreakdown=[...brokers].map(([broker,value])=>({broker,name:brokerConfig.brokers[broker]?.name||broker,value:Math.round(value)}));
-    return res.json({success:true,data:{netPnl:Math.round(pnl),totalTrades:trades.length,closedTrades:closes.length,
-      winRate:closes.length?Math.round(wins.length/closes.length*1000)/10:0,
-      winningTrades:wins.length,losingTrades:losses.length,
-      averageWin:wins.length?Math.round(wins.reduce((s,c)=>s+c.pnl,0)/wins.length):0,
-      averageLoss:losses.length?Math.round(Math.abs(losses.reduce((s,c)=>s+c.pnl,0)/losses.length)):0,
-      brokerBreakdown}});
-  }catch(error){console.error("Report error:",error.message);return res.status(500).json({success:false,message:"Failed to fetch report data"});}
+    const userId = getUserId(req, res);
+    if (!userId) return;
+    const now = new Date();
+    const range = String(req.query.range || "30d").toLowerCase();
+    const brokerFilter = req.query.broker;
+
+    let cutoff;
+    if (range === "today" || range === "1d") {
+      cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    } else if (range === "7d" || range === "1w") {
+      cutoff = new Date(now.getTime() - 7 * 86400000);
+    } else if (range === "30d" || range === "1m") {
+      cutoff = new Date(now.getTime() - 30 * 86400000);
+    } else if (range === "90d" || range === "3m") {
+      cutoff = new Date(now.getTime() - 90 * 86400000);
+    } else if (range === "1y" || range === "365d") {
+      cutoff = new Date(now.getTime() - 365 * 86400000);
+    } else if (range === "fy") {
+      const currentYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+      cutoff = new Date(currentYear, 3, 1, 0, 0, 0);
+    } else if (range === "all") {
+      cutoff = new Date(0);
+    } else {
+      cutoff = new Date(now.getTime() - 30 * 86400000);
+    }
+
+    const query = {
+      userId: new mongoose.Types.ObjectId(userId),
+      status: "COMPLETE"
+    };
+    if (brokerFilter && brokerFilter !== "all") {
+      query.broker = brokerFilter;
+    }
+
+    const all = await TradeRecord.find(query).lean();
+    const trades = all.filter(t => {
+      const d = effectiveTradeDate(t);
+      return d && d >= cutoff && d <= now;
+    }).sort((a, b) => (effectiveTradeDate(b) || 0) - (effectiveTradeDate(a) || 0));
+
+    const closes = buildRealizedMatches(all)
+      .filter(c => c.date >= cutoff && c.date <= now)
+      .sort((a, b) => b.date - a.date);
+
+    const wins = closes.filter(c => c.pnl > 0);
+    const losses = closes.filter(c => c.pnl < 0);
+    const grossPnl = closes.reduce((s, c) => s + c.pnl, 0);
+
+    let totalCharges = 0;
+    for (const t of trades) {
+      try {
+        const c = pnlEngine.calculateTradeFillCharges({
+          symbol: t.symbol,
+          exchange: t.exchange || "NSE",
+          segment: t.segment || "EQUITY",
+          productType: t.productCode || "INTRADAY",
+          transactionType: t.transactionType || "BUY",
+          quantity: Number(t.quantity) || 0,
+          price: getEffectivePrice(t),
+          broker: t.broker || "UPSTOX"
+        });
+        totalCharges += (c.total || 0);
+      } catch (err) {
+        // continue
+      }
+    }
+
+    const netPnl = grossPnl - totalCharges;
+    const totalWinPnl = wins.reduce((s, c) => s + c.pnl, 0);
+    const totalLossPnl = Math.abs(losses.reduce((s, c) => s + c.pnl, 0));
+    const profitFactor = totalLossPnl > 0 ? (totalWinPnl / totalLossPnl) : (totalWinPnl > 0 ? 99.9 : 1);
+
+    const largestWin = wins.length ? Math.max(...wins.map(c => c.pnl)) : 0;
+    const largestLoss = losses.length ? Math.min(...losses.map(c => c.pnl)) : 0;
+
+    const brokers = new Map();
+    for (const c of closes) {
+      brokers.set(c.broker, (brokers.get(c.broker) || 0) + c.pnl);
+    }
+    const brokerBreakdown = [...brokers].map(([broker, value]) => ({
+      broker,
+      name: brokerConfig.brokers[broker]?.name || broker,
+      value: Math.round(value * 100) / 100
+    }));
+
+    const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
+
+    return res.json({
+      success: true,
+      data: {
+        range,
+        period: {
+          from: cutoff.toISOString(),
+          to: now.toISOString()
+        },
+        grossPnl: round2(grossPnl),
+        totalCharges: round2(totalCharges),
+        netPnl: round2(netPnl),
+        totalTrades: trades.length,
+        closedTrades: closes.length,
+        winRate: closes.length ? Math.round((wins.length / closes.length) * 1000) / 10 : 0,
+        winningTrades: wins.length,
+        losingTrades: losses.length,
+        averageWin: wins.length ? round2(totalWinPnl / wins.length) : 0,
+        averageLoss: losses.length ? round2(totalLossPnl / losses.length) : 0,
+        profitFactor: round2(profitFactor),
+        largestWin: round2(largestWin),
+        largestLoss: round2(largestLoss),
+        brokerBreakdown,
+        closedPositions: closes.map(c => ({
+          symbol: c.symbol,
+          broker: c.broker,
+          brokerName: brokerConfig.brokers[c.broker]?.name || c.broker,
+          quantity: c.quantity,
+          entryPrice: round2(c.entryPrice),
+          exitPrice: round2(c.exitPrice),
+          pnl: round2(c.pnl),
+          pnlPercent: c.entryPrice > 0 ? round2(((c.exitPrice - c.entryPrice) / c.entryPrice) * 100) : 0,
+          date: c.date.toISOString()
+        })),
+        trades: trades.slice(0, 500).map(t => {
+          const d = effectiveTradeDate(t);
+          return {
+            tradeId: t.tradeId,
+            orderId: t.orderId,
+            symbol: t.symbol,
+            broker: t.broker,
+            brokerName: brokerConfig.brokers[t.broker]?.name || t.broker,
+            segment: t.segment || "EQUITY",
+            productCode: t.productCode || "INTRADAY",
+            transactionType: t.transactionType,
+            quantity: t.quantity,
+            executedPrice: t.executedPrice,
+            tradeTime: d ? d.toISOString() : (t.createdAt ? new Date(t.createdAt).toISOString() : new Date().toISOString())
+          };
+        })
+      }
+    });
+  } catch (error) {
+    console.error("Report error:", error.message);
+    return res.status(500).json({ success: false, message: "Failed to fetch report data" });
+  }
 };
 
 export const getRiskExposures = async (req, res) => {
@@ -275,13 +467,47 @@ export const getRiskExposures = async (req, res) => {
       .map(p => ({
         instrument: p._id,
         quantity: Math.abs(p.totalQty),
+        direction: p.totalQty > 0 ? "LONG" : "SHORT",
         avgPrice: Math.round(p.avgPrice * 100) / 100,
+        exposureAmount: Math.round(Math.abs(p.totalQty) * p.avgPrice * 100) / 100,
         lastTrade: p.lastTrade
       }));
 
+    const totalExposure = exposures.reduce((sum, e) => sum + e.exposureAmount, 0);
+
+    const allTrades = await TradeRecord.find({ userId: objectId, status: "COMPLETE" })
+      .sort({ createdAt: 1 })
+      .lean();
+
+    const closed = buildRealizedMatches(allTrades);
+
+    let peak = 0;
+    let running = 0;
+    let maxDrawdown = 0;
+    let todayPnL = 0;
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    for (const c of closed) {
+      running += c.pnl;
+      if (running > peak) peak = running;
+      const dd = peak - running;
+      if (dd > maxDrawdown) maxDrawdown = dd;
+      if (c.date && c.date.toISOString().slice(0, 10) === todayStr) {
+        todayPnL += c.pnl;
+      }
+    }
+
     return res.json({
       success: true,
-      data: { exposures }
+      data: {
+        exposures,
+        totalExposure: Math.round(totalExposure * 100) / 100,
+        openPositionsCount: exposures.length,
+        maxDrawdown: Math.round(maxDrawdown * 100) / 100,
+        todayPnL: Math.round(todayPnL * 100) / 100,
+        totalTrades: allTrades.length,
+        closedPositionsCount: closed.length
+      }
     });
   } catch (error) {
     console.error("Risk exposures error:", error.message);

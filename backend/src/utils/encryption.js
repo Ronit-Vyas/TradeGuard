@@ -1,19 +1,25 @@
 import CryptoJS from "crypto-js";
 
-const SECRET_KEY = process.env.ENCRYPTION_KEY;
+const getKey = () => {
+    return process.env.ENCRYPTION_KEY || "fcc3ae5999dc642c5d77ea0d035ae611d04723e1c8d4a8fb93dbda738b22e4d8";
+};
 
 const encrypt = (text) => {
-    return CryptoJS.AES.encrypt(text, SECRET_KEY).toString();  //AES stands for Advanced Encryption Standard. It’s a widely used algorithm for encrypting data, meaning it transforms readable data into unreadable ciphertext using a secret key.
+    if (!text) return text;
+    const key = getKey();
+    return CryptoJS.AES.encrypt(String(text), key).toString();
 };
 
 const decrypt = (encryptedText) => {
-    const SECRET_KEY = process.env.ENCRYPTION_KEY;
-    
-    const bytes = CryptoJS.AES.decrypt(
-        encryptedText,
-        SECRET_KEY
-    );
-    return bytes.toString(CryptoJS.enc.Utf8);
+    if (!encryptedText) return "";
+    try {
+        const key = getKey();
+        const bytes = CryptoJS.AES.decrypt(encryptedText, key);
+        const originalText = bytes.toString(CryptoJS.enc.Utf8);
+        return originalText || encryptedText;
+    } catch (e) {
+        return encryptedText;
+    }
 };
 
 export {

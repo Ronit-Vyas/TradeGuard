@@ -63,15 +63,27 @@ export default function Settings() {
           </div>
           <div className="form-group">
             <label className="form-label">Default currency</label>
-            <select
-              className="form-select"
-              value={profile.currency}
-              onChange={(e) => setProfile({ ...profile, currency: e.target.value })}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '10px 14px',
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius)',
+                color: 'var(--text-primary)',
+                fontSize: 14,
+                fontWeight: 500,
+              }}
             >
-              <option value="INR">INR — Indian Rupee</option>
-              <option value="USD">USD — US Dollar</option>
-              <option value="EUR">EUR — Euro</option>
-            </select>
+              <span style={{ fontSize: 16, color: 'var(--accent)', fontWeight: 700 }}>₹</span>
+              <span>INR — Indian Rupee (₹)</span>
+              <span className="badge badge-success" style={{ marginLeft: 'auto', fontSize: 11 }}>Active &amp; Locked</span>
+            </div>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>
+              TradeGuard is standardized exclusively on Indian Rupee (INR / ₹) for all Indian broker integrations.
+            </p>
           </div>
           <button className="btn btn-primary" onClick={saveProfile}>
             <Save size={14} /> Save profile

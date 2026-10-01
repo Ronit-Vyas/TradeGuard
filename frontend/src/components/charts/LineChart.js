@@ -74,10 +74,15 @@ export default function LineChart({ data, height = 240, formatValue = (v) => v }
           </g>
         ))}
 
-        {data.map((d, i) => (
+        {/* Decimated X-axis ticks to prevent overlap */}
+        {data.filter((_, idx) => {
+          if (data.length <= 6) return true;
+          const step = Math.ceil(data.length / 6);
+          return idx % step === 0 || idx === data.length - 1;
+        }).map((d, i) => (
           <text
             key={i}
-            x={x(i)}
+            x={x(data.indexOf(d))}
             y={height - 8}
             textAnchor="middle"
             fontSize="11"
@@ -94,7 +99,7 @@ export default function LineChart({ data, height = 240, formatValue = (v) => v }
               x2={x(hover)}
               y1={pad.top}
               y2={pad.top + innerH}
-              stroke="var(--text-muted)"
+              stroke="var(--text-secondary)"
               strokeDasharray="2 2"
             />
           </g>
@@ -110,16 +115,18 @@ export default function LineChart({ data, height = 240, formatValue = (v) => v }
             transform: 'translateX(-50%)',
             background: 'var(--bg-tertiary)',
             border: '1px solid var(--border)',
-            borderRadius: 6,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+            borderRadius: 8,
             padding: '8px 12px',
             fontSize: 12,
             pointerEvents: 'none',
             whiteSpace: 'nowrap',
+            zIndex: 10
           }}
         >
-          <div style={{ color: 'var(--text-muted)' }}>{data[hover].date}</div>
-          <div style={{ color: 'var(--accent)', fontWeight: 600 }}>
-            Equity {formatValue(data[hover].value)}
+          <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>{data[hover].date}</div>
+          <div style={{ color: data[hover].value >= 0 ? 'var(--success)' : 'var(--danger)', fontWeight: 700, fontFamily: 'monospace', marginTop: 2 }}>
+            Cumulative P&L: ₹{Number(data[hover].value).toLocaleString('en-IN')}
           </div>
         </div>
       )}

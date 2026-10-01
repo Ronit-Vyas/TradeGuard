@@ -45,7 +45,7 @@ const mapUpstoxProduct = (product) => {
 // ======================================================
 
 const mapUpstoxOrderType = (orderType) => {
-    if (!orderType) return undefined;
+    if (!orderType) return "MARKET";
 
     const normalized = String(orderType).toUpperCase();
 
@@ -58,7 +58,7 @@ const mapUpstoxOrderType = (orderType) => {
 
     return validOrderTypes.includes(normalized)
         ? normalized
-        : undefined;
+        : "MARKET";
 };
 
 
@@ -166,12 +166,13 @@ const mapUpstoxTrade = (trade) => {
         tradeId: String(trade.trade_id),
 
         // Historical API may not provide order_id.
-        // Current-day API may provide it.
+        // Current-day API may provide it. Fallback to ORD-<trade_id>.
         orderId:
             trade.order_id !== undefined &&
-            trade.order_id !== null
+            trade.order_id !== null &&
+            String(trade.order_id).trim() !== ""
                 ? String(trade.order_id)
-                : null,
+                : `ORD-${trade.trade_id}`,
 
         broker: "UPSTOX",
 

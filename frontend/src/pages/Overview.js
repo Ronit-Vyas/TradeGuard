@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, StatCard } from '../components/Card';
-import { Info, X, Zap, Activity, ShieldAlert, ArrowRight, Receipt, Scale } from 'lucide-react';
+import { Info, X, Zap, Activity, ShieldAlert, ArrowRight, Receipt, Scale, ShieldCheck } from 'lucide-react';
 import { api } from '../api/client';
 import { useLiveTrading } from '../hooks/useLiveTrading';
 import DonutChart from '../components/charts/DonutChart';
+import LineChart from '../components/charts/LineChart';
 
 const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444', '#06b6d4', '#f97316', '#84cc16'];
 
@@ -62,6 +63,9 @@ export default function Overview() {
   const [trades, setTrades] = useState([]);
   const [accounts, setAccounts] = useState([]);
   const [instrumentDistribution, setInstrumentDistribution] = useState([]);
+  const [equitySeries, setEquitySeries] = useState([]);
+  const [equityLoading, setEquityLoading] = useState(false);
+  const [riskData, setRiskData] = useState(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -74,12 +78,13 @@ export default function Overview() {
       setError('');
 
       try {
-        const [summaryResponse, tradesResponse, accountsResponse, instrumentResponse] =
+        const [summaryResponse, tradesResponse, accountsResponse, instrumentResponse, riskResponse] =
           await Promise.all([
             api.tradeSummary(),
             api.listTrades(),
             api.listBrokerAccounts(),
             api.instrumentDistribution(),
+            api.riskExposures(),
           ]);
 
         if (!active) return;
@@ -92,6 +97,7 @@ export default function Overview() {
           Array.isArray(accountsResponse?.data) ? accountsResponse.data : []
         );
         setInstrumentDistribution(instrumentResponse?.data?.distribution || []);
+        setRiskData(riskResponse?.data || null);
       } catch (err) {
         if (active) {
           setError(
@@ -111,6 +117,30 @@ export default function Overview() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadEquity() {
+      setEquityLoading(true);
+      try {
+        const res = await api.tradeAnalytics(range);
+        if (active && res?.data?.equitySeries) {
+          setEquitySeries(res.data.equitySeries);
+        }
+      } catch {
+        // Fallback: silently retain previous curve
+      } finally {
+        if (active) setEquityLoading(false);
+      }
+    }
+
+    loadEquity();
+
+    return () => {
+      active = false;
+    };
+  }, [range]);
 
   // Apply the selected date range to the execution list.
   // The summary cards below remain all-time totals returned by the API.
@@ -158,6 +188,22 @@ export default function Overview() {
   const distinctSymbols =
     summary?.distinctSymbols ??
     new Set(trades.map((trade) => trade.symbol).filter(Boolean)).size;
+
+  const riskPrefs = useMemo(() => {
+    try {
+      const stored = localStorage.getItem('tg_risk_prefs');
+      return stored ? JSON.parse(stored) : { dailyLimit: 15000, riskPerTrade: 1.5, maxExposure: 100000 };
+    } catch {
+      return { dailyLimit: 15000, riskPerTrade: 1.5, maxExposure: 100000 };
+    }
+  }, []);
+
+  const dailyLimit = Number(riskPrefs?.dailyLimit) || 15000;
+  const todayPnL = Number(riskData?.todayPnL || 0);
+  const todayLoss = Math.max(0, -todayPnL);
+  const dailyLossPct = dailyLimit > 0 ? Math.min((todayLoss / dailyLimit) * 100, 100) : 0;
+  const isBreached = todayLoss >= dailyLimit;
+  const isWarning = dailyLossPct >= 70 && !isBreached;
 
   return (
     <>
@@ -312,24 +358,29 @@ export default function Overview() {
           <div className="grid-2" style={{ marginBottom: 20 }}>
             <Card
               title="Equity performance"
-              subtitle="Equity curve will appear when portfolio-level P&L history is available"
+              subtitle={`Cumulative realized P&L curve for ${range === '7d' ? 'last 7 days' : range === '90d' ? 'last 90 days' : 'last 30 days'}`}
             >
-              <div
-                style={{
-                  minHeight: 220,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: 'var(--text-muted)',
-                  textAlign: 'center',
-                  padding: 20,
-                }}
-              >
-                No equity history available yet.
-                <br />
-                Individual executions are not enough to construct an accurate
-                account equity curve.
-              </div>
+              {equityLoading ? (
+                <div style={{ minHeight: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+                  Loading equity curve…
+                </div>
+              ) : equitySeries.length === 0 ? (
+                <div
+                  style={{
+                    minHeight: 220,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'var(--text-muted)',
+                    textAlign: 'center',
+                    padding: 20,
+                  }}
+                >
+                  No closed trades recorded in this period to plot equity curve.
+                </div>
+              ) : (
+                <LineChart data={equitySeries} height={240} />
+              )}
             </Card>
 
             <Card
@@ -454,25 +505,65 @@ export default function Overview() {
             </Card>
 
             <Card
-              title="Risk summary"
-              subtitle="Risk metrics require configured limits and portfolio-level calculations"
+              title="Risk summary &amp; Guardrails"
+              subtitle="Active daily loss limit, exposure consumption, and circuit breaker status"
             >
-              <div
-                style={{
-                  minHeight: 190,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'center',
-                  gap: 10,
-                }}
-              >
-                <div style={{ fontSize: 14, fontWeight: 600 }}>
-                  Risk metrics not available yet
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: 'rgba(255, 255, 255, 0.02)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <ShieldAlert size={16} color={isBreached ? 'var(--danger)' : isWarning ? 'var(--warning)' : 'var(--emerald)'} />
+                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Daily Loss Guardrail</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span className="mono" style={{ fontSize: 13, fontWeight: 600 }}>
+                      ₹{todayLoss.toLocaleString('en-IN')} / ₹{dailyLimit.toLocaleString('en-IN')}
+                    </span>
+                    <span className={`badge ${isBreached ? 'badge-danger' : isWarning ? 'badge-warning' : 'badge-success'}`} style={{ fontSize: 11 }}>
+                      {isBreached ? 'Breached' : isWarning ? 'Caution' : 'Active & Safe'}
+                    </span>
+                  </div>
                 </div>
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                  Daily loss used, capital exposed, and drawdown will be
-                  displayed after risk limits and the required position/P&amp;L
-                  calculations are connected to the backend.
+
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-secondary)', marginBottom: 6 }}>
+                    <span>Daily loss used</span>
+                    <span className="mono">{dailyLossPct.toFixed(1)}%</span>
+                  </div>
+                  <div className="progress-bar" style={{ height: 6 }}>
+                    <div
+                      className="progress-fill"
+                      style={{
+                        width: `${dailyLossPct}%`,
+                        background: isBreached ? 'var(--danger)' : isWarning ? 'var(--warning)' : 'var(--emerald)'
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 4 }}>
+                  <div style={{ padding: '10px 12px', background: 'rgba(255, 255, 255, 0.02)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Historical Drawdown</div>
+                    <div className="mono" style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginTop: 2 }}>
+                      ₹{(riskData?.maxDrawdown || 0).toLocaleString('en-IN')}
+                    </div>
+                  </div>
+                  <div style={{ padding: '10px 12px', background: 'rgba(255, 255, 255, 0.02)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Capital Exposed</div>
+                    <div className="mono" style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginTop: 2 }}>
+                      ₹{(riskData?.totalExposure || 0).toLocaleString('en-IN')}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
+                  <Link
+                    to="/app/risk"
+                    className="btn btn-secondary btn-sm"
+                    style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}
+                  >
+                    <span>Manage guardrails</span>
+                    <ArrowRight size={13} />
+                  </Link>
                 </div>
               </div>
             </Card>
@@ -525,10 +616,10 @@ export default function Overview() {
                   ? '—'
                   : formatINR(getPrice(drawerTrade)),
               ],
-              ['Order type', drawerTrade.orderType],
-              ['Segment', drawerTrade.segment || drawerTrade.exchange],
-              ['Order ID', drawerTrade.orderId],
-              ['Trade ID', drawerTrade.tradeId],
+              ['Order type', drawerTrade.orderType || 'MARKET'],
+              ['Segment', drawerTrade.segment || drawerTrade.exchange || 'EQUITY'],
+              ['Order ID', drawerTrade.orderId || ('ORD-' + (drawerTrade.tradeId || drawerTrade._id))],
+              ['Trade ID', drawerTrade.tradeId || '—'],
               ['Status', drawerTrade.status],
               [
                 'Executed / saved',

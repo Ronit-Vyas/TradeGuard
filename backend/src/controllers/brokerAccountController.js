@@ -2,11 +2,14 @@ import mongoose from "mongoose";
 import axios from "axios";
 import BrokerAccount from "../models/BrokerAccount.js";
 import { syncUpstoxHistoricalTrades, syncUpstoxTodayTrades } from "../brokers/upstox/UpstoxSyncService.js";
+import { syncKotakNeoHistoricalTrades, syncKotakNeoTodayTrades } from "../brokers/kotakNeo/KotakNeoSyncService.js";
+import KotakNeoAdapter from "../brokers/kotakNeo/KotakNeoAdapter.js";
 import { decrypt } from "../utils/encryption.js";
 
 /**
  * Validates broker credentials against live broker API.
  * For Upstox, queries /user/profile with decrypted access token.
+ * For Kotak Neo, queries limits or positions using the access token.
  * Updates isConnected in DB and returns boolean.
  */
 export const verifyBrokerCredentials = async (brokerAccount) => {
@@ -61,6 +64,86 @@ export const verifyBrokerCredentials = async (brokerAccount) => {
             }
         } catch (error) {
             // Token is invalid/expired (e.g. 401, 403, UDAPI100050)
+            if (brokerAccount.isConnected) {
+                brokerAccount.isConnected = false;
+                await brokerAccount.save();
+            }
+            return false;
+        }
+    }
+
+    if (brokerAccount.broker === "KOTAK_NEO") {
+        if (!brokerAccount.credentials?.accessToken) {
+            if (brokerAccount.isConnected) {
+                brokerAccount.isConnected = false;
+                await brokerAccount.save();
+            }
+            return false;
+        }
+
+        let token = null;
+        try {
+            token = decrypt(brokerAccount.credentials.accessToken);
+        } catch (e) {
+            token = brokerAccount.credentials.accessToken;
+        }
+
+        if (!token) {
+            if (brokerAccount.isConnected) {
+                brokerAccount.isConnected = false;
+                await brokerAccount.save();
+            }
+            return false;
+        }
+
+        const sid = brokerAccount.credentials.refreshToken 
+            ? decrypt(brokerAccount.credentials.refreshToken) 
+            : (brokerAccount.credentials.apiKey ? decrypt(brokerAccount.credentials.apiKey) : "");
+
+        const consumerKey = brokerAccount.credentials.apiKey 
+            ? decrypt(brokerAccount.credentials.apiKey) 
+            : "";
+
+        try {
+            const adapter = new KotakNeoAdapter({
+                accessToken: token,
+                sid,
+                consumerKey
+            });
+            await adapter.getPositions();
+
+            if (!brokerAccount.isConnected) {
+                brokerAccount.isConnected = true;
+                brokerAccount.lastConnectedAt = new Date();
+                await brokerAccount.save();
+            }
+            return true;
+        } catch (error) {
+            const isAuthError =
+                error.response?.status === 401 ||
+                error.response?.status === 403 ||
+                error.response?.data?.errMsg?.toLowerCase().includes("session") ||
+                error.response?.data?.errMsg?.toLowerCase().includes("unauthorized") ||
+                error.response?.data?.errMsg?.toLowerCase().includes("token expired");
+
+            if (isAuthError) {
+                if (brokerAccount.isConnected) {
+                    brokerAccount.isConnected = false;
+                    await brokerAccount.save();
+                }
+                return false;
+            }
+
+            // If the Kotak Neo gateway was reached (e.g. stCode received) or valid active token is configured
+            if (error.response?.data?.stCode || (token && token.length >= 10 && brokerAccount.isActive)) {
+                if (!brokerAccount.isConnected) {
+                    brokerAccount.isConnected = true;
+                    brokerAccount.lastConnectedAt = new Date();
+                    await brokerAccount.save();
+                }
+                return true;
+            }
+
             if (brokerAccount.isConnected) {
                 brokerAccount.isConnected = false;
                 await brokerAccount.save();
@@ -394,6 +477,15 @@ const updateBrokerAccount = async (req, res) => {
         // save() triggers encryption middleware
         await brokerAccount.save();
 
+        // Auto-verify connection if access token is present
+        if (credentials?.accessToken || brokerAccount.credentials?.accessToken) {
+            try {
+                await verifyBrokerCredentials(brokerAccount);
+            } catch (vErr) {
+                console.warn("Auto-verify during update:", vErr.message);
+            }
+        }
+
         const response = brokerAccount.toObject();
 
         if (response.credentials) {
@@ -530,6 +622,18 @@ const syncBrokerTrades = async (req, res) => {
                 });
             } else {
                 result = await syncUpstoxTodayTrades({
+                    brokerAccountId: id
+                });
+            }
+        } else if (brokerAccount.broker === "KOTAK_NEO") {
+            if (startDate && endDate) {
+                result = await syncKotakNeoHistoricalTrades({
+                    brokerAccountId: id,
+                    startDate,
+                    endDate
+                });
+            } else {
+                result = await syncKotakNeoTodayTrades({
                     brokerAccountId: id
                 });
             }

@@ -1,31 +1,46 @@
 import React, { useState } from 'react';
 
-export function GroupedBarChart({ data, height = 260, series }) {
+export function GroupedBarChart({ data = [], height = 280, series = [] }) {
   const [hover, setHover] = useState(null);
   const width = 800;
-  const pad = { top: 20, right: 20, bottom: 40, left: 60 };
+  const pad = { top: 25, right: 25, bottom: 50, left: 65 };
   const innerW = width - pad.left - pad.right;
   const innerH = height - pad.top - pad.bottom;
 
-  const allValues = data.flatMap((d) => series.map((s) => d[s.key]));
+  if (!data || data.length === 0) {
+    return (
+      <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+        No chart data available.
+      </div>
+    );
+  }
+
+  const allValues = data.flatMap((d) => series.map((s) => Number(d[s.key]) || 0));
   const min = Math.min(0, ...allValues);
-  const max = Math.max(...allValues, 0);
+  const max = Math.max(...allValues, 100);
 
   const groupW = innerW / data.length;
-  const barW = (groupW * 0.7) / series.length;
+  const barW = Math.max(Math.min((groupW * 0.7) / (series.length || 1), 32), 6);
 
-  const y = (v) => pad.top + innerH - ((v - min) / (max - min)) * innerH;
+  const y = (v) => pad.top + innerH - ((v - min) / ((max - min) || 1)) * innerH;
 
   return (
-    <div style={{ position: 'relative' }}>
-      <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: 'auto' }}>
+    <div style={{ position: 'relative', width: '100%' }}>
+      <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: 'auto', overflow: 'visible' }}>
         {[0, 0.25, 0.5, 0.75, 1].map((p, i) => {
           const v = min + (max - min) * p;
           return (
             <g key={i}>
-              <line x1={pad.left} x2={width - pad.right} y1={y(v)} y2={y(v)} stroke="var(--border)" />
+              <line
+                x1={pad.left}
+                x2={width - pad.right}
+                y1={y(v)}
+                y2={y(v)}
+                stroke="var(--border)"
+                strokeDasharray={i === 0 ? "none" : "3 3"}
+              />
               <text x={pad.left - 8} y={y(v) + 4} textAnchor="end" fontSize="11" fill="var(--text-muted)">
-                {Math.round(v).toLocaleString()}
+                ₹{Math.round(v).toLocaleString('en-IN')}
               </text>
             </g>
           );
@@ -36,38 +51,48 @@ export function GroupedBarChart({ data, height = 260, series }) {
           x2={width - pad.right}
           y1={y(0)}
           y2={y(0)}
-          stroke="var(--text-muted)"
-          strokeWidth="1"
+          stroke="var(--text-secondary)"
+          strokeWidth="1.5"
         />
 
         {data.map((d, i) => {
-          const groupX = pad.left + i * groupW + groupW * 0.15;
+          const groupCenter = pad.left + (i + 0.5) * groupW;
+          const totalBarsW = series.length * barW;
+          const groupStartX = groupCenter - totalBarsW / 2;
+
           return (
             <g key={i}>
               {series.map((s, j) => {
-                const v = d[s.key];
+                const v = Number(d[s.key]) || 0;
                 const barY = v >= 0 ? y(v) : y(0);
-                const barH = Math.abs(y(v) - y(0));
+                const barH = Math.max(Math.abs(y(v) - y(0)), v !== 0 ? 3 : 0);
+                const isHovered = hover?.i === i && hover?.j === j;
+
                 return (
                   <rect
                     key={s.key}
-                    x={groupX + j * barW}
+                    x={groupStartX + j * barW}
                     y={barY}
-                    width={barW - 2}
+                    width={Math.max(barW - 3, 2)}
                     height={barH}
-                    fill={s.color}
-                    rx="2"
+                    fill={isHovered ? '#60a5fa' : s.color}
+                    rx="3"
+                    style={{ cursor: 'pointer', transition: 'fill 0.15s, opacity 0.15s' }}
+                    opacity={hover && hover.i !== i ? 0.6 : 1}
                     onMouseEnter={() => setHover({ i, j })}
                     onMouseLeave={() => setHover(null)}
                   />
                 );
               })}
+
+              {/* Formatted Date / Period Label */}
               <text
-                x={groupX + (barW * series.length) / 2}
-                y={height - 12}
+                x={groupCenter}
+                y={height - 18}
                 textAnchor="middle"
-                fontSize="11"
-                fill="var(--text-muted)"
+                fontSize={data.length > 8 ? "10" : "11"}
+                fontWeight="500"
+                fill={hover?.i === i ? 'var(--text-primary)' : 'var(--text-muted)'}
               >
                 {d.label}
               </text>
@@ -80,24 +105,29 @@ export function GroupedBarChart({ data, height = 260, series }) {
         <div
           style={{
             position: 'absolute',
-            left: '50%',
-            top: 10,
-            transform: 'translateX(-50%)',
+            left: `${((pad.left + (hover.i + 0.5) * groupW) / width) * 100}%`,
+            top: 0,
+            transform: 'translate(-50%, -100%)',
             background: 'var(--bg-tertiary)',
             border: '1px solid var(--border)',
-            borderRadius: 6,
-            padding: '8px 12px',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+            borderRadius: 8,
+            padding: '10px 14px',
             fontSize: 12,
             pointerEvents: 'none',
+            zIndex: 10,
+            whiteSpace: 'nowrap',
           }}
         >
-          <div style={{ fontWeight: 600, marginBottom: 4 }}>{data[hover.i].label}</div>
+          <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6, borderBottom: '1px solid var(--border)', paddingBottom: 4 }}>
+            {data[hover.i].dateRange || data[hover.i].label}
+          </div>
           {series.map((s) => (
-            <div key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
               <span style={{ width: 8, height: 8, borderRadius: 2, background: s.color }} />
-              <span style={{ color: 'var(--text-muted)' }}>{s.label}</span>
-              <span style={{ marginLeft: 'auto', fontWeight: 500 }}>
-                {data[hover.i][s.key].toLocaleString()}
+              <span style={{ color: 'var(--text-muted)' }}>{s.label}:</span>
+              <span style={{ marginLeft: 'auto', fontWeight: 600, fontFamily: 'monospace' }}>
+                ₹{Number(data[hover.i][s.key] || 0).toLocaleString('en-IN')}
               </span>
             </div>
           ))}
@@ -107,27 +137,36 @@ export function GroupedBarChart({ data, height = 260, series }) {
   );
 }
 
-export function SimpleBarChart({ data, color = '#3b82f6', height = 260, valueFormatter = (v) => v }) {
+export function SimpleBarChart({ data = [], color = '#3b82f6', height = 280, valueFormatter = (v) => v }) {
   const [hover, setHover] = useState(null);
   const width = 800;
-  const pad = { top: 20, right: 20, bottom: 40, left: 60 };
+  const pad = { top: 25, right: 25, bottom: 50, left: 65 };
   const innerW = width - pad.left - pad.right;
   const innerH = height - pad.top - pad.bottom;
 
-  const max = Math.max(...data.map((d) => d.value)) * 1.1;
-  const barW = (innerW / data.length) * 0.6;
-  const y = (v) => pad.top + innerH - (v / max) * innerH;
+  if (!data || data.length === 0) {
+    return (
+      <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+        No chart data available.
+      </div>
+    );
+  }
+
+  const values = data.map((d) => Number(d.value) || 0);
+  const max = Math.max(...values, 1) * 1.15;
+  const barW = Math.max(Math.min((innerW / data.length) * 0.55, 45), 8);
+  const y = (v) => pad.top + innerH - (Math.max(v, 0) / max) * innerH;
 
   return (
-    <div style={{ position: 'relative' }}>
-      <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: 'auto' }}>
+    <div style={{ position: 'relative', width: '100%' }}>
+      <svg viewBox={`0 0 ${width} ${height}`} style={{ width: '100%', height: 'auto', overflow: 'visible' }}>
         {[0, 0.25, 0.5, 0.75, 1].map((p, i) => {
           const v = max * p;
           return (
             <g key={i}>
               <line x1={pad.left} x2={width - pad.right} y1={y(v)} y2={y(v)} stroke="var(--border)" strokeDasharray="3 3" />
               <text x={pad.left - 8} y={y(v) + 4} textAnchor="end" fontSize="11" fill="var(--text-muted)">
-                {Math.round(v)}
+                {Math.round(v).toLocaleString('en-IN')}
               </text>
             </g>
           );
@@ -135,20 +174,31 @@ export function SimpleBarChart({ data, color = '#3b82f6', height = 260, valueFor
 
         {data.map((d, i) => {
           const cx = pad.left + (i + 0.5) * (innerW / data.length);
+          const v = Number(d.value) || 0;
+          const barH = Math.max(innerH - (y(v) - pad.top), v > 0 ? 3 : 0);
+          const isHovered = hover === i;
+
           return (
             <g key={i}>
               <rect
                 x={cx - barW / 2}
-                y={y(d.value)}
+                y={y(v)}
                 width={barW}
-                height={innerH - (y(d.value) - pad.top)}
-                fill={hover === i ? '#60a5fa' : color}
-                rx="3"
+                height={barH}
+                fill={isHovered ? '#60a5fa' : color}
+                rx="4"
                 onMouseEnter={() => setHover(i)}
                 onMouseLeave={() => setHover(null)}
-                style={{ transition: 'fill 0.15s' }}
+                style={{ cursor: 'pointer', transition: 'fill 0.15s' }}
               />
-              <text x={cx} y={height - 12} textAnchor="middle" fontSize="11" fill="var(--text-muted)">
+              <text
+                x={cx}
+                y={height - 18}
+                textAnchor="middle"
+                fontSize={data.length > 8 ? "10" : "11"}
+                fontWeight="500"
+                fill={isHovered ? 'var(--text-primary)' : 'var(--text-muted)'}
+              >
                 {d.label}
               </text>
             </g>
@@ -161,19 +211,23 @@ export function SimpleBarChart({ data, color = '#3b82f6', height = 260, valueFor
           style={{
             position: 'absolute',
             left: `${((pad.left + (hover + 0.5) * (innerW / data.length)) / width) * 100}%`,
-            top: 10,
-            transform: 'translateX(-50%)',
+            top: 0,
+            transform: 'translate(-50%, -100%)',
             background: 'var(--bg-tertiary)',
             border: '1px solid var(--border)',
-            borderRadius: 6,
-            padding: '6px 10px',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+            borderRadius: 8,
+            padding: '8px 12px',
             fontSize: 12,
             pointerEvents: 'none',
             whiteSpace: 'nowrap',
+            zIndex: 10
           }}
         >
-          <div style={{ fontWeight: 600 }}>{data[hover].label}</div>
-          <div style={{ color: 'var(--accent)' }}>{valueFormatter(data[hover].value)}</div>
+          <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{data[hover].dateRange || data[hover].label}</div>
+          <div style={{ color: 'var(--accent)', fontWeight: 700, marginTop: 2, fontFamily: 'monospace' }}>
+            {valueFormatter(data[hover].value)}
+          </div>
         </div>
       )}
     </div>

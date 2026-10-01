@@ -1196,3 +1196,50 @@ tbody tr:hover {
 .mb-4 { margin-bottom: 16px; }
 .w-full { width: 100%; }
 .text-center { text-align: center; }
+
+/* Print / PDF Styles */
+.report-print-header {
+  display: none;
+}
+
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #111827 !important;
+  }
+  .sidebar, .topbar, .btn, .filter-select, .info-banner, .toast-container, .report-hide-print {
+    display: none !important;
+  }
+  .main-content {
+    margin-left: 0 !important;
+    padding: 0 !important;
+  }
+  .page-container {
+    padding: 0 !important;
+    max-width: 100% !important;
+  }
+  .card, .stat-card {
+    background: #ffffff !important;
+    border: 1px solid #e5e7eb !important;
+    color: #111827 !important;
+    break-inside: avoid;
+    box-shadow: none !important;
+  }
+  .stat-value, .detail-value, .page-title {
+    color: #111827 !important;
+  }
+  .report-print-header {
+    display: block !important;
+    margin-bottom: 24px;
+    border-bottom: 2px solid #111827;
+    padding-bottom: 12px;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+  th, td {
+    border-bottom: 1px solid #e5e7eb !important;
+    color: #111827 !important;
+  }
+}

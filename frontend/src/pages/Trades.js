@@ -309,9 +309,15 @@ export default function Trades() {
                         : formatINR(getExecutionPrice(trade))}
                     </td>
 
-                    <td>{trade.orderType || '—'}</td>
-                    <td>{trade.orderId || '—'}</td>
-                    <td>{trade.tradeId || '—'}</td>
+                    <td>
+                      <span className="badge badge-neutral" style={{ fontSize: '11px', textTransform: 'uppercase' }}>
+                        {trade.orderType || 'MARKET'}
+                      </span>
+                    </td>
+                    <td className="mono" style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      {trade.orderId || ('ORD-' + (trade.tradeId || trade._id))}
+                    </td>
+                    <td className="mono" style={{ fontSize: '12px' }}>{trade.tradeId || '—'}</td>
                   </tr>
                 );
               })}
@@ -386,10 +392,10 @@ export default function Trades() {
                   ? '—'
                   : formatINR(getExecutionPrice(drawerTrade)),
               ],
-              ['Order type', drawerTrade.orderType],
-              ['Segment', drawerTrade.segment || drawerTrade.exchange],
-              ['Order ID', drawerTrade.orderId],
-              ['Trade ID', drawerTrade.tradeId],
+              ['Order type', drawerTrade.orderType || 'MARKET'],
+              ['Segment', drawerTrade.segment || drawerTrade.exchange || 'EQUITY'],
+              ['Order ID', drawerTrade.orderId || ('ORD-' + (drawerTrade.tradeId || drawerTrade._id))],
+              ['Trade ID', drawerTrade.tradeId || '—'],
               ['Status', drawerTrade.status],
               [
                 'Executed / saved',

@@ -186,19 +186,38 @@ export default function BrokerAccountForm() {
           </div>
 
           <div className="form-group">
-            <label className="form-label">Client ID *</label>
+            <label className="form-label">
+              {form.broker === 'KOTAK_NEO' ? 'Client ID / UCC *' : 'Client ID *'}
+            </label>
             <input
               className="form-input"
-              placeholder="e.g. AB123456"
+              placeholder={form.broker === 'KOTAK_NEO' ? 'e.g. UCC code / Neo User ID' : 'e.g. Upstox UCC or Client ID'}
               value={form.clientId}
               onChange={(e) => update('clientId', e.target.value)}
             />
           </div>
 
-          <SecretField name="apiKey" label="API key" placeholder="Optional" />
-          <SecretField name="apiSecret" label="API secret" placeholder="Optional" />
-          <SecretField name="accessToken" label="Access token" placeholder="Optional" />
-          <SecretField name="refreshToken" label="Refresh token" placeholder="Optional" />
+          <SecretField 
+            name="accessToken" 
+            label={form.broker === 'KOTAK_NEO' ? 'Kotak Neo Session Token / Trade Token' : 'Upstox Access Token'} 
+            placeholder={form.broker === 'KOTAK_NEO' ? 'Paste Kotak Neo trade token (JWT / Auth)' : 'Paste Upstox Bearer access token'} 
+          />
+
+          <SecretField 
+            name="apiKey" 
+            label={form.broker === 'KOTAK_NEO' ? 'Consumer Key (Optional)' : 'API Key (Optional)'} 
+            placeholder="Optional" 
+          />
+          <SecretField 
+            name="apiSecret" 
+            label={form.broker === 'KOTAK_NEO' ? 'Consumer Secret (Optional)' : 'API Secret (Optional)'} 
+            placeholder="Optional" 
+          />
+          <SecretField 
+            name="refreshToken" 
+            label={form.broker === 'KOTAK_NEO' ? 'Session ID / SID (Optional)' : 'Refresh Token (Optional)'} 
+            placeholder="Optional" 
+          />
 
           <div className="form-group">
             <label className="form-label">Token expires at</label>

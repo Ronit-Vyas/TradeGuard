@@ -1,3 +1,6 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import userRoutes from './routes/userRoutes.js';
 import brokerAccountRoutes from './routes/brokerAccountRoutes.js';
 import tradeRoutes from './routes/tradeRoutes.js';
@@ -5,12 +8,9 @@ import tradeRoutes from './routes/tradeRoutes.js';
 import express from 'express';
 import { connectDB } from './config/db.js';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import http from 'http';
 
 import liveWebSocketService from './services/Websocket/LiveWebSocketSevice.js';
-
-dotenv.config();
 
 const app = express();
 
