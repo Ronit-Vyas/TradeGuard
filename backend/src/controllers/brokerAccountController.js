@@ -1,6 +1,5 @@
 import mongoose from "mongoose";
 import BrokerAccount from "../models/BrokerAccount.js";
-import { startUpstoxStream } from "../brokers/upstox/UpstoxConnectionManager.js";
 import { syncUpstoxHistoricalTrades } from "../brokers/upstox/UpstoxSyncService.js";
 
 // CREATE BROKER ACCOUNT

@@ -467,6 +467,131 @@ const syncUpstoxHistoricalTrades = async ({
 };
 
 
+
+        // ==================================================
+        // 6. FETCH CURRENT POSITIONS
+        // ==================================================
+
+        console.log(
+            "Fetching current Upstox positions..."
+        );
+
+        const positions =
+            await upstox.getPositions();
+
+        console.log(
+            "Current positions fetched:",
+            positions.length
+        );
+
+
+        // ==================================================
+        // 7. CALCULATE & PRINT P&L
+        // ==================================================
+
+        console.log("");
+        console.log(
+            "===================================="
+        );
+        console.log(
+            "TRADEGUARD P&L SNAPSHOT"
+        );
+        console.log(
+            "===================================="
+        );
+
+        let totalUnrealised = 0;
+        let totalRealised = 0;
+
+        if (positions.length === 0) {
+
+            console.log(
+                "No open positions found."
+            );
+
+        } else {
+
+            for (const position of positions) {
+
+                const quantity =
+                    Number(position.quantity || 0);
+
+                const averagePrice =
+                    Number(position.average_price || 0);
+
+                const lastPrice =
+                    Number(position.last_price || 0);
+
+                const unrealised =
+                    Number(position.unrealised || 0);
+
+                const realised =
+                    Number(position.realised || 0);
+
+                totalUnrealised += unrealised;
+                totalRealised += realised;
+
+                console.log("");
+                console.log(
+                    `${position.trading_symbol}`
+                );
+
+                console.log(
+                    "------------------------------------"
+                );
+
+                console.log(
+                    "Quantity       :",
+                    quantity
+                );
+
+                console.log(
+                    "Average Price  : ₹",
+                    averagePrice
+                );
+
+                console.log(
+                    "Last Price     : ₹",
+                    lastPrice
+                );
+
+                console.log(
+                    "Unrealised P&L : ₹",
+                    unrealised
+                );
+
+                console.log(
+                    "Realised P&L   : ₹",
+                    realised
+                );
+            }
+        }
+
+        console.log("");
+        console.log(
+            "------------------------------------"
+        );
+
+        console.log(
+            "Total Unrealised P&L : ₹",
+            totalUnrealised
+        );
+
+        console.log(
+            "Total Realised P&L   : ₹",
+            totalRealised
+        );
+
+        console.log(
+            "Total P&L            : ₹",
+            totalUnrealised + totalRealised
+        );
+
+        console.log(
+            "===================================="
+        );
+
+
 export {
     syncUpstoxHistoricalTrades
 };

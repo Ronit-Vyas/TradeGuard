@@ -139,6 +139,32 @@ class UpstoxAdapter {
             );
         }
     }
+
+
+        async getPositions() {
+
+        try {
+
+            const response = await this.client.get(
+                "/portfolio/short-term-positions"
+            );
+
+            return response.data.data || [];
+
+        } catch (error) {
+
+            console.error(
+                "Upstox Positions Error:",
+                error.response?.data || error.message
+            );
+
+            throw new Error(
+                error.response?.data?.errors?.[0]?.message ||
+                "Failed to fetch positions from Upstox"
+            );
+        }
+    }
+
 }
 
 
