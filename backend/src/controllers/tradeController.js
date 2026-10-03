@@ -255,15 +255,108 @@ export const getAnalytics = async (req, res) => {
     }
 
     const brokerMap = new Map();
-    for (const c of closes) brokerMap.set(c.broker,(brokerMap.get(c.broker)||0)+c.pnl);
+    // Pre-populate brokers from in-range trades
+    for (const t of trades) {
+      if (t.broker && !brokerMap.has(t.broker)) {
+        brokerMap.set(t.broker, { pnl: 0, trades: 0 });
+      }
+    }
+    // Aggregate realized P&L from closed positions
+    for (const c of closes) {
+      const b = c.broker || "UNKNOWN";
+      const prev = brokerMap.get(b) || { pnl: 0, trades: 0 };
+      brokerMap.set(b, { ...prev, pnl: prev.pnl + c.pnl });
+    }
+    // Count trades for each broker
+    for (const t of trades) {
+      if (t.broker && brokerMap.has(t.broker)) {
+        brokerMap.get(t.broker).trades++;
+      }
+    }
 
-    const brokerPnL = [...brokerMap.entries()].map(([broker,value])=>({
-      broker,name:brokerConfig.brokers[broker]?.name||broker,value:Math.round(value)
-    }));
-    const dayNames=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-    const activity=new Map();
-    for (const t of trades) { const d=effectiveTradeDate(t); const name=dayNames[d.getDay()]; activity.set(name,(activity.get(name)||0)+1); }
-    const dailyActivity=dayNames.map(day=>({day,value:activity.get(day)||0}));
+    const brokerPnL = [...brokerMap.entries()].map(([broker, data]) => ({
+      broker,
+      name: brokerConfig.brokers[broker]?.name || (broker === "ANGEL_ONE" ? "Angel One" : broker),
+      value: Math.round((data.pnl + Number.EPSILON) * 100) / 100,
+      trades: data.trades
+    })).sort((a, b) => b.trades - a.trades);
+
+    // Build trading activity breakdown based on selected range
+    let dailyActivity = [];
+    if (range === "today" || range === "1d") {
+      const slots = [
+        { label: "09:15 - 11:30", startH: 9, startM: 15, endH: 11, endM: 30 },
+        { label: "11:30 - 13:30", startH: 11, startM: 30, endH: 13, endM: 30 },
+        { label: "13:30 - 15:30", startH: 13, startM: 30, endH: 15, endM: 30 },
+        { label: "Post Market",   startH: 15, startM: 30, endH: 23, endM: 59 }
+      ];
+      dailyActivity = slots.map(s => {
+        const count = trades.filter(t => {
+          const d = effectiveTradeDate(t);
+          if (!d) return false;
+          const mins = d.getHours() * 60 + d.getMinutes();
+          return mins >= (s.startH * 60 + s.startM) && mins <= (s.endH * 60 + s.endM);
+        }).length;
+        return {
+          label: s.label,
+          day: s.label,
+          value: count,
+          dateRange: `Today (${s.label})`
+        };
+      });
+    } else if (range === "7d" || range === "1w") {
+      // 7 calendar days
+      for (let i = 6; i >= 0; i--) {
+        const target = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+        const ymd = target.toISOString().slice(0, 10);
+        const count = trades.filter(t => {
+          const d = effectiveTradeDate(t);
+          return d && d.toISOString().slice(0, 10) === ymd;
+        }).length;
+        dailyActivity.push({
+          label: target.toLocaleDateString("en-IN", { day: "2-digit", month: "short" }),
+          day: target.toLocaleDateString("en-IN", { weekday: "short" }),
+          value: count,
+          dateRange: target.toLocaleDateString("en-IN", { weekday: "long", day: "2-digit", month: "short", year: "numeric" })
+        });
+      }
+    } else if (range === "30d" || range === "1m") {
+      const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      const dayFullNames = { Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday' };
+      const activity = new Map();
+      for (const t of trades) {
+        const d = effectiveTradeDate(t);
+        if (!d) continue;
+        const dayIdx = (d.getDay() + 6) % 7;
+        const name = dayNames[dayIdx];
+        activity.set(name, (activity.get(name) || 0) + 1);
+      }
+      dailyActivity = dayNames.map(name => ({
+        label: name,
+        day: dayFullNames[name],
+        value: activity.get(name) || 0,
+        dateRange: `${dayFullNames[name]} — ${activity.get(name) || 0} trades in last 30 days`
+      }));
+    } else {
+      // 90d, 1y, all -> Mon-Sun breakdown with full day names and context
+      const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      const dayFullNames = { Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday' };
+      const activity = new Map();
+      for (const t of trades) {
+        const d = effectiveTradeDate(t);
+        if (!d) continue;
+        const dayIdx = (d.getDay() + 6) % 7;
+        const name = dayNames[dayIdx];
+        activity.set(name, (activity.get(name) || 0) + 1);
+      }
+      const periodName = range === 'all' ? 'All Time' : (range === '1y' ? 'Past 1 Year' : 'Past 90 Days');
+      dailyActivity = dayNames.map(name => ({
+        label: name,
+        day: dayFullNames[name],
+        value: activity.get(name) || 0,
+        dateRange: `${dayFullNames[name]} — ${activity.get(name) || 0} trades (${periodName})`
+      }));
+    }
     const wins=closes.filter(c=>c.pnl>0), losses=closes.filter(c=>c.pnl<0);
     return res.json({success:true,data:{
       equitySeries,weeklyPnL,brokerPnL,dailyActivity,
@@ -533,7 +626,7 @@ export const getBrokerComparison = async (req, res) => {
       intraday: config.brokerage?.equityIntraday?.type === "FLAT"
         ? `₹${config.brokerage?.equityIntraday?.amount || 20}/order`
         : `₹${config.brokerage?.equityIntraday?.flat || 20}/order`,
-      segments: key === "UPSTOX" ? "Equity, F&O, Currency" : key === "KOTAK_NEO" ? "Equity, F&O, Currency" : "Equity, F&O, Commodity",
+      segments: key === "UPSTOX" ? "Equity, F&O, Currency" : key === "KOTAK_NEO" ? "Equity, F&O, Currency" : key === "ANGEL_ONE" ? "Equity, F&O, Commodity, Currency" : "Equity, F&O, Commodity",
       connection: connectedBrokers.has(key) ? "Connected" : "Not configured"
     }));
 
@@ -738,6 +831,8 @@ export const getChargesAnalytics = async (req, res) => {
     const grossPnL = closes.reduce((sum, c) => sum + c.pnl, 0);
     const netPnL = grossPnL - totalCharges;
 
+    const round = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+
     // Per-broker charge breakdown (useful for combined/all view)
     const brokerChargesMap = new Map();
     for (const t of tradesWithCharges) {
@@ -751,6 +846,7 @@ export const getChargesAnalytics = async (req, res) => {
     }
     const brokerBreakdown = [...brokerChargesMap.entries()].map(([broker, data]) => ({
       broker,
+      name: brokerConfig.brokers[broker]?.name || (broker === "ANGEL_ONE" ? "Angel One" : broker),
       charges: round(data.charges),
       trades: data.trades,
       turnover: round(data.turnover),
@@ -772,8 +868,6 @@ export const getChargesAnalytics = async (req, res) => {
         charges: Math.round(charges * 100) / 100,
         percentage: totalCharges > 0 ? Math.round((charges / totalCharges) * 1000) / 10 : 0
       }));
-
-    const round = n => Math.round((n + Number.EPSILON) * 100) / 100;
 
     return res.json({
       success: true,
@@ -817,6 +911,65 @@ export const getChargesAnalytics = async (req, res) => {
   } catch (error) {
     console.error("Charges analytics error:", error.message);
     return res.status(500).json({ success: false, message: "Failed to calculate charges analytics" });
+  }
+};
+
+export const createTrade = async (req, res) => {
+  try {
+    const {
+      userId,
+      brokerAccountId,
+      broker,
+      symbol,
+      exchange = "NSE",
+      segment = "EQUITY",
+      transactionType,
+      quantity,
+      executedPrice,
+      orderType = "MARKET",
+      productCode = "INTRADAY",
+      tradeTime,
+      tradeId,
+      orderId
+    } = req.body;
+
+    if (!userId || !brokerAccountId || !symbol || !transactionType || !quantity || !executedPrice) {
+      return res.status(400).json({
+        success: false,
+        message: "userId, brokerAccountId, symbol, transactionType, quantity, and executedPrice are required"
+      });
+    }
+
+    const tId = tradeId || `TRD-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+    const trade = await TradeRecord.create({
+      userId,
+      brokerAccountId,
+      broker: broker || "ANGEL_ONE",
+      tradeId: tId,
+      orderId: orderId || `ORD-${tId}`,
+      symbol: String(symbol).toUpperCase(),
+      exchange: String(exchange).toUpperCase(),
+      segment: String(segment).toUpperCase(),
+      transactionType: String(transactionType).toUpperCase(),
+      quantity: Number(quantity),
+      executedPrice: Number(executedPrice),
+      orderType: String(orderType).toUpperCase(),
+      status: "COMPLETE",
+      productCode: String(productCode).toUpperCase(),
+      tradeTime: tradeTime ? new Date(tradeTime) : new Date()
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Trade created successfully",
+      data: trade
+    });
+  } catch (err) {
+    if (err.code === 11000) {
+      return res.status(409).json({ success: false, message: "A trade with this tradeId already exists" });
+    }
+    return res.status(500).json({ success: false, message: err.message || "Failed to create trade" });
   }
 };
 

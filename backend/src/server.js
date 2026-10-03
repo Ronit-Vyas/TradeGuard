@@ -1,9 +1,18 @@
+import crypto from 'crypto';
+if (typeof globalThis.crypto === 'undefined' || !globalThis.crypto.getRandomValues) {
+    globalThis.crypto = crypto.webcrypto || crypto;
+}
+if (typeof global.crypto === 'undefined' || !global.crypto.getRandomValues) {
+    global.crypto = crypto.webcrypto || crypto;
+}
+
 import dotenv from 'dotenv';
 dotenv.config();
 
 import userRoutes from './routes/userRoutes.js';
 import brokerAccountRoutes from './routes/brokerAccountRoutes.js';
 import tradeRoutes from './routes/tradeRoutes.js';
+import webhookRoutes from './routes/webhookRoutes.js';
 
 import express from 'express';
 import { connectDB } from './config/db.js';
@@ -42,6 +51,7 @@ app.use(express.json());
 app.use("/api/users", userRoutes);
 app.use("/api/broker-accounts", brokerAccountRoutes);
 app.use("/api/trades", tradeRoutes);
+app.use("/api/webhooks", webhookRoutes);
 
 // --------------------
 // Create HTTP Server

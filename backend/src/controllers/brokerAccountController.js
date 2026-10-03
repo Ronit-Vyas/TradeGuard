@@ -6,7 +6,9 @@ import { syncKotakNeoHistoricalTrades, syncKotakNeoTodayTrades } from "../broker
 import KotakNeoAdapter from "../brokers/kotakNeo/KotakNeoAdapter.js";
 import { syncDhanHistoricalTrades, syncDhanTodayTrades } from "../brokers/dhan/DhanSyncService.js";
 import DhanAdapter from "../brokers/dhan/DhanAdapter.js";
-import { decrypt } from "../utils/encryption.js";
+import { syncAngelOneHistoricalTrades, syncAngelOneTodayTrades } from "../brokers/angelOne/AngelOneSyncService.js";
+import AngelOneAdapter from "../brokers/angelOne/AngelOneAdapter.js";
+import { decrypt, encrypt } from "../utils/encryption.js";
 
 /**
  * Validates broker credentials against live broker API.
@@ -224,6 +226,90 @@ export const verifyBrokerCredentials = async (brokerAccount) => {
         }
     }
 
+    if (brokerAccount.broker === "ANGEL_ONE") {
+        let token = null;
+        if (brokerAccount.credentials?.accessToken) {
+            try {
+                token = decrypt(brokerAccount.credentials.accessToken);
+            } catch {
+                token = brokerAccount.credentials.accessToken;
+            }
+        }
+
+        const apiKey = brokerAccount.credentials?.apiKey ? decrypt(brokerAccount.credentials.apiKey) : "";
+        const clientCode = brokerAccount.credentials?.clientId || "";
+        const password = brokerAccount.credentials?.password 
+            ? decrypt(brokerAccount.credentials.password) 
+            : (brokerAccount.credentials?.apiSecret ? decrypt(brokerAccount.credentials.apiSecret) : "");
+        const totpSecret = brokerAccount.credentials?.totpSecret 
+            ? decrypt(brokerAccount.credentials.totpSecret) 
+            : "";
+        const refreshToken = brokerAccount.credentials?.refreshToken 
+            ? decrypt(brokerAccount.credentials.refreshToken) 
+            : "";
+
+        // If no token and not enough credentials to perform login, set disconnected
+        if (!token && (!clientCode || !password || (!totpSecret && !apiKey))) {
+            if (brokerAccount.isConnected) {
+                brokerAccount.isConnected = false;
+                await brokerAccount.save();
+            }
+            return false;
+        }
+
+        try {
+            const adapter = new AngelOneAdapter({
+                apiKey,
+                clientCode,
+                password,
+                totpSecret,
+                accessToken: token,
+                refreshToken
+            });
+
+            // If token exists, test via getRMS or getProfile
+            if (token) {
+                try {
+                    await adapter.getRMS();
+                    if (!brokerAccount.isConnected) {
+                        brokerAccount.isConnected = true;
+                        brokerAccount.lastConnectedAt = new Date();
+                        await brokerAccount.save();
+                    }
+                    return true;
+                } catch {
+                    // Token expired or invalid, continue below to attempt login if credentials exist
+                }
+            }
+
+            // Attempt login if credentials are present
+            if (clientCode && password && (totpSecret || apiKey)) {
+                await adapter.login();
+                if (adapter.jwtToken) {
+                    brokerAccount.credentials.accessToken = adapter.jwtToken;
+                    if (adapter.refreshToken) brokerAccount.credentials.refreshToken = adapter.refreshToken;
+                    if (adapter.feedToken) brokerAccount.credentials.feedToken = adapter.feedToken;
+                    brokerAccount.isConnected = true;
+                    brokerAccount.lastConnectedAt = new Date();
+                    await brokerAccount.save();
+                    return true;
+                }
+            }
+
+            if (brokerAccount.isConnected) {
+                brokerAccount.isConnected = false;
+                await brokerAccount.save();
+            }
+            return false;
+        } catch (error) {
+            if (brokerAccount.isConnected) {
+                brokerAccount.isConnected = false;
+                await brokerAccount.save();
+            }
+            return false;
+        }
+    }
+
     // For other brokers
     if (!brokerAccount.credentials?.accessToken && !brokerAccount.credentials?.apiKey) {
         if (brokerAccount.isConnected) {
@@ -322,6 +408,13 @@ const createBrokerAccount = async (req, res) => {
             await BrokerAccount.countDocuments()
         );
 
+        // Auto-verify/connect credentials if provided
+        try {
+            await verifyBrokerCredentials(brokerAccount);
+        } catch (vErr) {
+            console.warn("Auto-verify during create:", vErr.message);
+        }
+
         // Don't send encrypted credentials back to frontend
         const response = brokerAccount.toObject();
 
@@ -330,6 +423,9 @@ const createBrokerAccount = async (req, res) => {
             delete response.credentials.apiSecret;
             delete response.credentials.accessToken;
             delete response.credentials.refreshToken;
+            delete response.credentials.password;
+            delete response.credentials.totpSecret;
+            delete response.credentials.feedToken;
         }
 
         return res.status(201).json({
@@ -389,6 +485,9 @@ const getBrokerAccounts = async (req, res) => {
                 delete doc.credentials.apiSecret;
                 delete doc.credentials.accessToken;
                 delete doc.credentials.refreshToken;
+                delete doc.credentials.password;
+                delete doc.credentials.totpSecret;
+                delete doc.credentials.feedToken;
             }
             return doc;
         });
@@ -433,7 +532,10 @@ const getBrokerAccount = async (req, res) => {
                 "-credentials.apiKey " +
                 "-credentials.apiSecret " +
                 "-credentials.accessToken " +
-                "-credentials.refreshToken"
+                "-credentials.refreshToken " +
+                "-credentials.password " +
+                "-credentials.totpSecret " +
+                "-credentials.feedToken"
             );
 
         if (!brokerAccount) {
@@ -529,6 +631,21 @@ const updateBrokerAccount = async (req, res) => {
                 brokerAccount.credentials.tokenExpiresAt =
                     credentials.tokenExpiresAt;
             }
+
+            if (credentials.password !== undefined) {
+                brokerAccount.credentials.password =
+                    credentials.password;
+            }
+
+            if (credentials.totpSecret !== undefined) {
+                brokerAccount.credentials.totpSecret =
+                    credentials.totpSecret;
+            }
+
+            if (credentials.feedToken !== undefined) {
+                brokerAccount.credentials.feedToken =
+                    credentials.feedToken;
+            }
         }
 
         // Update active status
@@ -549,13 +666,11 @@ const updateBrokerAccount = async (req, res) => {
         // save() triggers encryption middleware
         await brokerAccount.save();
 
-        // Auto-verify connection if access token is present
-        if (credentials?.accessToken || brokerAccount.credentials?.accessToken) {
-            try {
-                await verifyBrokerCredentials(brokerAccount);
-            } catch (vErr) {
-                console.warn("Auto-verify during update:", vErr.message);
-            }
+        // Auto-verify connection if credentials are present
+        try {
+            await verifyBrokerCredentials(brokerAccount);
+        } catch (vErr) {
+            console.warn("Auto-verify during update:", vErr.message);
         }
 
         const response = brokerAccount.toObject();
@@ -565,6 +680,9 @@ const updateBrokerAccount = async (req, res) => {
             delete response.credentials.apiSecret;
             delete response.credentials.accessToken;
             delete response.credentials.refreshToken;
+            delete response.credentials.password;
+            delete response.credentials.totpSecret;
+            delete response.credentials.feedToken;
         }
 
         return res.status(200).json({
@@ -750,6 +868,18 @@ const syncBrokerTrades = async (req, res) => {
                 startDate: start,
                 endDate: end
             });
+        } else if (brokerAccount.broker === "ANGEL_ONE") {
+            if (startDate && endDate) {
+                result = await syncAngelOneHistoricalTrades({
+                    brokerAccountId: id,
+                    startDate,
+                    endDate
+                });
+            } else {
+                result = await syncAngelOneTodayTrades({
+                    brokerAccountId: id
+                });
+            }
         } else {
             return res.status(400).json({
                 success: false,

@@ -123,9 +123,14 @@ export default function Analytics() {
             <Card title="Performance by broker" subtitle="Net P&L contribution">
               {brokerPnL.length > 0 ? (
                 <SimpleBarChart
-                  data={brokerPnL.map((b) => ({ label: b.name, value: b.value }))}
+                  data={brokerPnL.map((b) => ({
+                    label: b.name,
+                    value: b.value,
+                    trades: b.trades,
+                    dateRange: `${b.name} (${b.trades || 0} executed trades)`
+                  }))}
                   color="#3b82f6"
-                  valueFormatter={(v) => `₹${v.toLocaleString('en-IN')}`}
+                  valueFormatter={(v) => `₹${Number(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                 />
               ) : (
                 <div style={{ minHeight: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', textAlign: 'center', padding: 20 }}>
@@ -134,7 +139,10 @@ export default function Analytics() {
               )}
             </Card>
 
-            <Card title="Trading activity by day" subtitle="Executed trade count">
+            <Card
+              title={range === 'all' || range === '1y' || range === '90d' ? 'Trading activity by day of week' : 'Trading activity by day'}
+              subtitle={range === 'all' || range === '1y' || range === '90d' ? 'Executed trade count across days (Mon – Sun)' : 'Executed trade count'}
+            >
               {dailyActivity.length > 0 ? (
                 <SimpleBarChart
                   data={dailyActivity}

@@ -10,6 +10,7 @@
 import UpstoxClient from "upstox-js-sdk";
 import kotakNeoMarketData from "../../brokers/kotakNeo/KotakNeoMarketDataService.js";
 import dhanMarketData from "../../brokers/dhan/DhanMarketDataService.js";
+import angelOneMarketData from "../../brokers/angelOne/AngelOneMarketDataService.js";
 
 export class MarketDataEngine {
     constructor() {
@@ -81,6 +82,8 @@ export class MarketDataEngine {
         const kotakConsumerKey = typeof brokerAuth === "object" ? brokerAuth?.kotakConsumerKey : null;
         const dhanToken = typeof brokerAuth === "object" ? brokerAuth?.dhanToken : null;
         const dhanClientId = typeof brokerAuth === "object" ? brokerAuth?.dhanClientId : null;
+        const angelToken = typeof brokerAuth === "object" ? brokerAuth?.angelToken : null;
+        const angelApiKey = typeof brokerAuth === "object" ? brokerAuth?.angelApiKey : null;
 
         let liveBrokerConnected = false;
 
@@ -200,7 +203,35 @@ export class MarketDataEngine {
             }
         }
 
-        // 4. Fallback real-time price tick simulator for off-market hours/resilience
+        // 4. Try connecting to Angel One Market Data Service if token is available
+        if (angelToken) {
+            try {
+                await angelOneMarketData.start(
+                    uId,
+                    angelApiKey,
+                    angelToken,
+                    instrumentKeys,
+                    (tick) => {
+                        liveBrokerConnected = true;
+                        if (this.simulators.has(uId)) {
+                            clearInterval(this.simulators.get(uId));
+                            this.simulators.delete(uId);
+                        }
+                        if (tick?.instrumentKey && tick?.ltp) {
+                            this.notify(uId, tick.instrumentKey, tick.ltp);
+                        }
+                        if (tick?.symbol && tick?.ltp) {
+                            this.notify(uId, tick.symbol, tick.ltp);
+                        }
+                    }
+                );
+                console.log(`[MarketDataEngine] Initialized Angel One Market Data stream for user ${uId}`);
+            } catch (aErr) {
+                console.warn("[MarketDataEngine] Angel One market data notice:", aErr.message);
+            }
+        }
+
+        // 5. Fallback real-time price tick simulator for off-market hours/resilience
         if (!liveBrokerConnected) {
             this.ensureFallbackSimulator(uId, positions);
         }
@@ -256,6 +287,12 @@ export class MarketDataEngine {
 
         try {
             dhanMarketData.stop(uId);
+        } catch (e) {
+            // ignore
+        }
+
+        try {
+            angelOneMarketData.stop(uId);
         } catch (e) {
             // ignore
         }

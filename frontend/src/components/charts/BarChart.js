@@ -175,7 +175,7 @@ export function SimpleBarChart({ data = [], color = '#3b82f6', height = 280, val
         {data.map((d, i) => {
           const cx = pad.left + (i + 0.5) * (innerW / data.length);
           const v = Number(d.value) || 0;
-          const barH = Math.max(innerH - (y(v) - pad.top), v > 0 ? 3 : 0);
+          const barH = Math.max(innerH - (y(v) - pad.top), v !== 0 ? 6 : (d.trades || d.value !== undefined ? 4 : 0));
           const isHovered = hover === i;
 
           return (
@@ -199,7 +199,7 @@ export function SimpleBarChart({ data = [], color = '#3b82f6', height = 280, val
                 fontWeight="500"
                 fill={isHovered ? 'var(--text-primary)' : 'var(--text-muted)'}
               >
-                {d.label}
+                {d.label || d.day || d.name || ''}
               </text>
             </g>
           );
@@ -224,7 +224,14 @@ export function SimpleBarChart({ data = [], color = '#3b82f6', height = 280, val
             zIndex: 10
           }}
         >
-          <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{data[hover].dateRange || data[hover].label}</div>
+          <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+            {data[hover].dateRange || data[hover].label || data[hover].day || data[hover].name}
+          </div>
+          {data[hover].trades !== undefined && (
+            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+              {data[hover].trades} executed trades
+            </div>
+          )}
           <div style={{ color: 'var(--accent)', fontWeight: 700, marginTop: 2, fontFamily: 'monospace' }}>
             {valueFormatter(data[hover].value)}
           </div>

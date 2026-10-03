@@ -619,9 +619,24 @@ Contains static config for each broker:
 | `syncUpstoxHistoricalTrades({brokerAccountId, startDate, endDate})` | Historical backfill sync |
 | `syncUpstoxTodayTrades({brokerAccountId})` | Current-day sync |
 
-### Other Brokers
+### Angel One Integration (SmartAPI)
 
-Angel One, Dhan, and Kotak Neo are defined in the broker config and model enums but have **no integration code yet** — only Upstox has a full adaptor.
+**Files:**
+- `backend/src/brokers/angelOne/AngelOneAdapter.js` — Comprehensive SmartAPI client (loginByPassword, generateTokens refresh, profile, RMS limits, tradebook, orderbook, positions, holdings, LTP, candle data)
+- `backend/src/brokers/angelOne/AngelOneMapper.js` — Maps Angel One API responses to standard TradeGuard trade & position schemas
+- `backend/src/brokers/angelOne/AngelOneSyncService.js` — Syncs today's and historical trades into TradeRecord collection
+- `backend/src/brokers/angelOne/AngelOneMarketDataService.js` — Real-time quote polling and market tick streamer
+- `backend/src/utils/totp.js` — Pure Node.js RFC 6238 TOTP generator (compatible with Google Authenticator QR setup)
+
+**Authentication & TOTP Mechanism:**
+- SmartAPI requires `apiKey`, `clientcode`, `password` (Trading PIN), and a 6-digit `totp`.
+- When users enable TOTP on `smartapi.angelbroking.com/enable-totp`, they receive a QR code and an alphanumeric Base32 secret key.
+- TradeGuard accepts this Secret Key in `totpSecret` to automatically generate RFC 6238 TOTPs on the fly and seamlessly maintain/refresh sessions without requiring manual OTP entry.
+- Direct pasting of active Bearer JWT tokens is also supported.
+
+### Kotak Neo & Dhan Integrations
+- Kotak Neo: `backend/src/brokers/kotakNeo/` (KotakNeoAdapter, Mapper, SyncService, MarketDataService)
+- DhanHQ: `backend/src/brokers/dhan/` (DhanAdapter, Mapper, SyncService, MarketDataService)
 
 ---
 

@@ -120,10 +120,49 @@ export const api = {
       method: 'POST',
     }),
 
+  importAngelOneCsv: async (brokerAccountId, file) => {
+    const token = localStorage.getItem('tg_token');
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const res = await fetch(
+      `${API_URL}/api/webhooks/angelone/import-csv/${brokerAccountId}`,
+      {
+        method: 'POST',
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: formData,
+      }
+    );
+
+    let data = null;
+    try {
+      data = await res.json();
+    } catch {
+      data = null;
+    }
+
+    if (!res.ok) {
+      throw new ApiError(
+        data?.message || `Import failed (${res.status})`,
+        res.status
+      );
+    }
+
+    return data;
+  },
+
 
   // Trades
   listTrades: (userId = getStoredUserId()) =>
     request(withUserId('/api/trades', userId)),
+
+  createTrade: (payload) =>
+    request('/api/trades', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
 
   tradeSummary: (userId = getStoredUserId()) =>
     request(withUserId('/api/trades/summary', userId)),

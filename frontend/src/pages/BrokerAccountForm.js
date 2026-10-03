@@ -21,6 +21,8 @@ export default function BrokerAccountForm() {
     apiSecret: '',
     accessToken: '',
     refreshToken: '',
+    password: '',
+    totpSecret: '',
     tokenExpiresAt: '',
     isActive: true,
   });
@@ -50,6 +52,8 @@ export default function BrokerAccountForm() {
             apiSecret: '',
             accessToken: '',
             refreshToken: '',
+            password: '',
+            totpSecret: '',
             tokenExpiresAt: '',
           }));
         }
@@ -90,6 +94,8 @@ export default function BrokerAccountForm() {
         if (form.apiSecret) payload.credentials.apiSecret = form.apiSecret;
         if (form.accessToken) payload.credentials.accessToken = form.accessToken;
         if (form.refreshToken) payload.credentials.refreshToken = form.refreshToken;
+        if (form.password) payload.credentials.password = form.password;
+        if (form.totpSecret) payload.credentials.totpSecret = form.totpSecret;
         if (form.tokenExpiresAt) payload.credentials.tokenExpiresAt = form.tokenExpiresAt;
         await api.updateBrokerAccount(id, payload);
         toast.push('Broker account updated', 'success');
@@ -103,6 +109,8 @@ export default function BrokerAccountForm() {
         if (form.apiSecret) payload.credentials.apiSecret = form.apiSecret;
         if (form.accessToken) payload.credentials.accessToken = form.accessToken;
         if (form.refreshToken) payload.credentials.refreshToken = form.refreshToken;
+        if (form.password) payload.credentials.password = form.password;
+        if (form.totpSecret) payload.credentials.totpSecret = form.totpSecret;
         if (form.tokenExpiresAt) payload.credentials.tokenExpiresAt = form.tokenExpiresAt;
         await api.createBrokerAccount(payload);
         toast.push('Broker account created successfully', 'success');
@@ -185,12 +193,33 @@ export default function BrokerAccountForm() {
             </select>
           </div>
 
+          {form.broker === 'ANGEL_ONE' && (
+            <div style={{
+              background: 'rgba(245, 158, 11, 0.08)',
+              border: '1px solid rgba(245, 158, 11, 0.25)',
+              borderRadius: 8,
+              padding: '12px 16px',
+              marginBottom: 16,
+              fontSize: '0.875rem',
+              color: '#d97706'
+            }}>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>Angel One SmartAPI Setup Guide:</div>
+              <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5, color: 'inherit' }}>
+                <li><strong>API Key:</strong> Generated from your app on <a href="https://smartapi.angelbroking.com" target="_blank" rel="noreferrer" style={{ textDecoration: 'underline', color: 'inherit' }}>smartapi.angelbroking.com</a>.</li>
+                <li><strong>QR Code & Secret Key:</strong> When enabling TOTP at <a href="https://smartapi.angelbroking.com/enable-totp" target="_blank" rel="noreferrer" style={{ textDecoration: 'underline', color: 'inherit' }}>smartapi.angelbroking.com/enable-totp</a>, you get a QR code and an alphanumeric secret key under it.</li>
+                <li><strong>Automatic Login:</strong> Paste that Secret Key in <em>TOTP Secret Key</em> along with your Trading PIN. TradeGuard automatically computes your 6-digit Google Authenticator TOTP and keeps your session active!</li>
+              </ul>
+            </div>
+          )}
+
           <div className="form-group">
             <label className="form-label">
               {form.broker === 'KOTAK_NEO' 
                 ? 'Client ID / UCC *' 
                 : form.broker === 'DHAN' 
                 ? 'Dhan Client ID (e.g. 1000000001) *' 
+                : form.broker === 'ANGEL_ONE'
+                ? 'Angel One Client ID (e.g. A123456) *'
                 : 'Client ID *'}
             </label>
             <input
@@ -200,6 +229,8 @@ export default function BrokerAccountForm() {
                   ? 'e.g. UCC code / Neo User ID (e.g. W0WLI)' 
                   : form.broker === 'DHAN' 
                   ? 'e.g. 1000000001 (found in Dhan profile)' 
+                  : form.broker === 'ANGEL_ONE'
+                  ? 'e.g. A123456 (your Angel One Client ID)'
                   : 'e.g. Upstox UCC or Client ID'
               }
               value={form.clientId}
@@ -207,23 +238,50 @@ export default function BrokerAccountForm() {
             />
           </div>
 
-          <SecretField 
-            name="accessToken" 
-            label={
-              form.broker === 'KOTAK_NEO' 
-                ? 'Kotak Neo Trade Token / Auth (JWT starts with eyJ...) *' 
-                : form.broker === 'DHAN' 
-                ? 'Dhan Access Token (JWT from DhanHQ API portal) *' 
-                : 'Upstox Access Token (Bearer JWT) *'
-            } 
-            placeholder={
-              form.broker === 'KOTAK_NEO' 
-                ? 'Paste Kotak Neo trade JWT token (starts with eyJ...)' 
-                : form.broker === 'DHAN' 
-                ? 'Paste Dhan 24-hr access token (from dhanhq.co)' 
-                : 'Paste Upstox Bearer access token'
-            } 
-          />
+          {form.broker === 'ANGEL_ONE' && (
+            <>
+              <SecretField 
+                name="apiKey" 
+                label="SmartAPI API Key *" 
+                placeholder="Paste API Key from SmartAPI App (X-PrivateKey)" 
+              />
+              <SecretField 
+                name="password" 
+                label="Trading PIN / MPIN *" 
+                placeholder="4-digit trading PIN or account password" 
+              />
+              <SecretField 
+                name="totpSecret" 
+                label="TOTP Secret Key (from QR Code setup page) *" 
+                placeholder="Alphanumeric secret key under the QR code (e.g. JBSWY3...)" 
+              />
+              <SecretField 
+                name="accessToken" 
+                label="Access Token (Optional - generated automatically from PIN & TOTP Key)" 
+                placeholder="Optional manual JWT Bearer Token (starts with eyJ...)" 
+              />
+            </>
+          )}
+
+          {form.broker !== 'ANGEL_ONE' && (
+            <SecretField 
+              name="accessToken" 
+              label={
+                form.broker === 'KOTAK_NEO' 
+                  ? 'Kotak Neo Trade Token / Auth (JWT starts with eyJ...) *' 
+                  : form.broker === 'DHAN' 
+                  ? 'Dhan Access Token (JWT from DhanHQ API portal) *' 
+                  : 'Upstox Access Token (Bearer JWT) *'
+              } 
+              placeholder={
+                form.broker === 'KOTAK_NEO' 
+                  ? 'Paste Kotak Neo trade JWT token (starts with eyJ...)' 
+                  : form.broker === 'DHAN' 
+                  ? 'Paste Dhan 24-hr access token (from dhanhq.co)' 
+                  : 'Paste Upstox Bearer access token'
+              } 
+            />
+          )}
 
           {form.broker === 'KOTAK_NEO' && (
             <SecretField 

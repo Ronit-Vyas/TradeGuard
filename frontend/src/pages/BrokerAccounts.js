@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, RefreshCw, MoreHorizontal, Link2, AlertTriangle } from 'lucide-react';
+import { Plus, RefreshCw, MoreHorizontal, Link2, AlertTriangle, Upload } from 'lucide-react';
 import { Card, InfoBanner } from '../components/Card';
 import { useToast } from '../components/Toast';
 import { api } from '../api/client';
@@ -46,6 +46,9 @@ export default function BrokerAccounts() {
           `Sync complete — ${data.inserted || 0} new, ${data.updated || 0} updated, ${data.skipped || 0} skipped`,
           'success'
         );
+        if (data.note) {
+          toast.push(data.note, 'info');
+        }
       } else {
         toast.push('Sync complete', 'success');
       }
@@ -78,6 +81,43 @@ export default function BrokerAccounts() {
 
   async function handleConnect(id) {
     navigate(`/app/broker-accounts/${id}/edit`);
+  }
+
+  const [importingId, setImportingId] = useState(null);
+  const fileInputRef = React.useRef(null);
+  const importTargetId = React.useRef(null);
+
+  function handleImportClick(accId) {
+    importTargetId.current = accId;
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
+  }
+
+  async function handleCsvImport(e) {
+    const file = e.target.files?.[0];
+    if (!file || !importTargetId.current) return;
+
+    setImportingId(importTargetId.current);
+    try {
+      const response = await api.importAngelOneCsv(importTargetId.current, file);
+      const data = response?.data;
+      if (data) {
+        toast.push(
+          `Import complete — ${data.inserted || 0} new trades added, ${data.updated || 0} updated`,
+          'success'
+        );
+      } else {
+        toast.push(response?.message || 'Import complete', 'success');
+      }
+      await load();
+    } catch (err) {
+      toast.push(err.message || 'Failed to import CSV', 'error');
+    } finally {
+      setImportingId(null);
+      importTargetId.current = null;
+    }
   }
 
   return (
@@ -220,6 +260,22 @@ export default function BrokerAccounts() {
                   >
                     {verifyingId === acc._id ? 'Checking with Broker API...' : 'Test Broker Live Status'}
                   </button>
+
+                  {acc.broker?.toUpperCase() === 'ANGEL_ONE' && (
+                    <button
+                      className="btn btn-secondary w-full"
+                      style={{ fontSize: 12, padding: '6px 12px', borderColor: 'rgba(255, 138, 0, 0.4)' }}
+                      onClick={() => handleImportClick(acc._id)}
+                      disabled={importingId === acc._id}
+                      title="Import past trades from Angel One TradeBook CSV or Excel export"
+                    >
+                      {importingId === acc._id ? (
+                        <><span className="spinner" /> Importing trades…</>
+                      ) : (
+                        <><Upload size={13} style={{ marginRight: 4 }} /> Import Trade CSV / Excel</>
+                      )}
+                    </button>
+                  )}
                 </div>
 
               </div>
@@ -227,6 +283,14 @@ export default function BrokerAccounts() {
           })}
         </div>
       )}
+
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleCsvImport}
+        accept=".csv,.xlsx,.xls"
+        style={{ display: 'none' }}
+      />
     </>
   );
 }

@@ -25,6 +25,9 @@ const brokerAccountSchema = new mongoose.Schema(
             apiSecret: String,
             accessToken: String,
             refreshToken: String,
+            password: String,
+            totpSecret: String,
+            feedToken: String,
 
             tokenExpiresAt: Date
         },
@@ -64,6 +67,18 @@ brokerAccountSchema.pre("save", function () {
 
     if (this.isModified("credentials.refreshToken") && this.credentials.refreshToken) {
         this.credentials.refreshToken = encrypt(this.credentials.refreshToken);
+    }
+
+    if (this.isModified("credentials.password") && this.credentials.password) {
+        this.credentials.password = encrypt(this.credentials.password);
+    }
+
+    if (this.isModified("credentials.totpSecret") && this.credentials.totpSecret) {
+        this.credentials.totpSecret = encrypt(this.credentials.totpSecret);
+    }
+
+    if (this.isModified("credentials.feedToken") && this.credentials.feedToken) {
+        this.credentials.feedToken = encrypt(this.credentials.feedToken);
     }
 
 });

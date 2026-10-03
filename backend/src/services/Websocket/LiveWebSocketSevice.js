@@ -19,6 +19,8 @@ import UpstoxAdapter from "../../brokers/upstox/UpstoxAdaptor.js";
 import KotakNeoAdapter from "../../brokers/kotakNeo/KotakNeoAdapter.js";
 import DhanAdapter from "../../brokers/dhan/DhanAdapter.js";
 import { mapDhanPosition } from "../../brokers/dhan/DhanMapper.js";
+import AngelOneAdapter from "../../brokers/angelOne/AngelOneAdapter.js";
+import { mapAngelOnePosition } from "../../brokers/angelOne/AngelOneMapper.js";
 import { decrypt } from "../../utils/encryption.js";
 
 class LiveWebSocketService {
@@ -195,6 +197,33 @@ class LiveWebSocketService {
                                 const dhanPos = await dhan.getPositions();
                                 if (Array.isArray(dhanPos)) {
                                     const mapped = dhanPos.map(mapDhanPosition).filter(Boolean);
+                                    brokerPositions.push(...mapped);
+                                }
+                            } catch (e) {
+                                // Token might be expired or market closed, ignore
+                            }
+                        }
+                    } else if (acc.broker === "ANGEL_ONE") {
+                        const token = acc.credentials?.accessToken ? decrypt(acc.credentials.accessToken) : "";
+                        const apiKey = acc.credentials?.apiKey ? decrypt(acc.credentials.apiKey) : "";
+                        const clientCode = acc.credentials?.clientId || "";
+                        const password = acc.credentials?.password ? decrypt(acc.credentials.password) : (acc.credentials?.apiSecret ? decrypt(acc.credentials.apiSecret) : "");
+                        const totpSecret = acc.credentials?.totpSecret ? decrypt(acc.credentials.totpSecret) : "";
+                        
+                        if (token || (clientCode && password)) {
+                            brokerAuth.angelToken = token;
+                            brokerAuth.angelApiKey = apiKey;
+                            const angel = new AngelOneAdapter({
+                                apiKey,
+                                clientCode,
+                                password,
+                                totpSecret,
+                                accessToken: token
+                            });
+                            try {
+                                const angelPos = await angel.getPositions();
+                                if (Array.isArray(angelPos)) {
+                                    const mapped = angelPos.map(mapAngelOnePosition).filter(Boolean);
                                     brokerPositions.push(...mapped);
                                 }
                             } catch (e) {
