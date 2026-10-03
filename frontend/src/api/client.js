@@ -131,8 +131,11 @@ export const api = {
   tradeAnalytics: (range = '30d', userId = getStoredUserId()) =>
     request(withUserId(`/api/trades/analytics?range=${encodeURIComponent(range)}`, userId)),
 
-  chargesAnalytics: (range = '30d', userId = getStoredUserId()) =>
-    request(withUserId(`/api/trades/charges-analytics?range=${encodeURIComponent(range)}`, userId)),
+  chargesAnalytics: (range = '30d', broker = 'all', userId = getStoredUserId()) => {
+    let path = `/api/trades/charges-analytics?range=${encodeURIComponent(range)}`;
+    if (broker && broker !== 'all') path += `&broker=${encodeURIComponent(broker)}`;
+    return request(withUserId(path, userId));
+  },
 
   instrumentDistribution: (userId = getStoredUserId()) =>
     request(withUserId('/api/trades/instrument-distribution', userId)),

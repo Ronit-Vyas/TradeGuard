@@ -649,12 +649,22 @@ export const getChargesAnalytics = async (req, res) => {
       cutoff = new Date(now.getTime() - 30 * 86400000);
     }
 
+    const brokerFilter = req.query.broker;
+
     let allTrades = await TradeRecord.find({ userId: objectId, status: "COMPLETE" }).lean();
     if (!allTrades || allTrades.length === 0) {
       allTrades = await TradeRecord.find({ userId: objectId }).lean();
     }
 
-    const tradesInRange = allTrades.filter(t => {
+    // Collect unique brokers from all trades for the filter list
+    const availableBrokers = [...new Set(allTrades.map(t => t.broker).filter(Boolean))];
+
+    // Apply broker filter (filter only the in-range trades, not allTrades — needed for correct FIFO P&L)
+    const filteredAll = brokerFilter && brokerFilter !== "all"
+      ? allTrades.filter(t => t.broker === brokerFilter)
+      : allTrades;
+
+    const tradesInRange = filteredAll.filter(t => {
       const d = effectiveTradeDate(t);
       return d && d >= cutoff && d <= now;
     }).sort((a, b) => effectiveTradeDate(b) - effectiveTradeDate(a));
@@ -724,9 +734,28 @@ export const getChargesAnalytics = async (req, res) => {
       };
     });
 
-    const closes = buildRealizedMatches(allTrades).filter(c => c.date >= cutoff && c.date <= now);
+    const closes = buildRealizedMatches(filteredAll).filter(c => c.date >= cutoff && c.date <= now);
     const grossPnL = closes.reduce((sum, c) => sum + c.pnl, 0);
     const netPnL = grossPnL - totalCharges;
+
+    // Per-broker charge breakdown (useful for combined/all view)
+    const brokerChargesMap = new Map();
+    for (const t of tradesWithCharges) {
+      const b = t.broker || "UNKNOWN";
+      const prev = brokerChargesMap.get(b) || { charges: 0, trades: 0, turnover: 0 };
+      brokerChargesMap.set(b, {
+        charges: prev.charges + (t.charges?.total || 0),
+        trades: prev.trades + 1,
+        turnover: prev.turnover + (t.turnover || 0)
+      });
+    }
+    const brokerBreakdown = [...brokerChargesMap.entries()].map(([broker, data]) => ({
+      broker,
+      charges: round(data.charges),
+      trades: data.trades,
+      turnover: round(data.turnover),
+      percentage: totalCharges > 0 ? round((data.charges / totalCharges) * 100) : 0
+    })).sort((a, b) => b.charges - a.charges);
 
     const timeline = [...dailyCharges.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
@@ -779,6 +808,9 @@ export const getChargesAnalytics = async (req, res) => {
         avgChargePerTrade: tradesInRange.length > 0 ? round(totalCharges / tradesInRange.length) : 0,
         timeline,
         topSymbols,
+        brokerBreakdown,
+        availableBrokers,
+        activeBrokerFilter: brokerFilter || "all",
         recentTrades: tradesWithCharges.slice(0, 50)
       }
     });

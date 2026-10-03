@@ -35,6 +35,17 @@ const syncKotakNeoHistoricalTrades = async ({
         throw new Error("Failed to decrypt Kotak Neo access token");
     }
 
+    // Check if the token is known to be expired
+    if (brokerAccount.credentials.tokenExpiresAt) {
+        const expiry = new Date(brokerAccount.credentials.tokenExpiresAt);
+        if (!isNaN(expiry.getTime()) && expiry < new Date()) {
+            throw new Error(
+                "Kotak Neo access token has expired. " +
+                "Please log in to Kotak Neo and update your Access Token and Session ID (sid) in Broker Accounts."
+            );
+        }
+    }
+
     const sid = brokerAccount.credentials.refreshToken 
         ? decrypt(brokerAccount.credentials.refreshToken) 
         : (brokerAccount.credentials.apiKey ? decrypt(brokerAccount.credentials.apiKey) : "");

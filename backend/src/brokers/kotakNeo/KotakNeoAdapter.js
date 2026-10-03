@@ -7,21 +7,30 @@ class KotakNeoAdapter {
         }
 
         this.accessToken = String(accessToken).trim();
-        this.sid = sid ? String(sid).trim() : this.accessToken;
+        this.sid = sid ? String(sid).trim() : "";
         this.consumerKey = consumerKey ? String(consumerKey).trim() : "";
-        this.baseURL = "https://mis.kotaksecurities.com";
-        this.fallbackURL = "https://cis.kotaksecurities.com";
+        // Updated to use the correct Kotak Neo API trade servers
+        this.baseURL = "https://e21.kotaksecurities.com";
+        this.fallbackURL = "https://e41.kotaksecurities.com";
 
         this.headers = {
             "Accept": "application/json",
             "Content-Type": "application/json",
-            "Auth": this.accessToken,
-            "Sid": this.sid,
+            // Authorization header for access token
+            "Authorization": `Bearer ${this.accessToken}`,
+            // Optional consumerKey header if provided
+            ...(this.consumerKey ? { "consumerKey": this.consumerKey } : {}),
             "neo-fin-key": "neotradeapi"
         };
 
+        // sid (Session ID) is sent as a separate header if available
+        if (this.sid) {
+            this.headers["Sid"] = this.sid;
+        }
+
+        // consumerKey / apiKey used for API trading plan users (set as separate header)
         if (this.consumerKey) {
-            this.headers["Authorization"] = this.consumerKey;
+            this.headers["consumerKey"] = this.consumerKey;
         }
 
         this.client = axios.create({
@@ -32,32 +41,36 @@ class KotakNeoAdapter {
     }
 
     async _request(method, path, options = {}) {
-        try {
-            return await this.client.request({
-                method,
-                url: path,
-                ...options
-            });
-        } catch (error) {
-            // If primary gateway fails or is unreachable, retry on alternate gateway URL
-            if (!error.response || error.response?.status >= 500 || error.code === "ECONNREFUSED" || error.code === "ENOTFOUND") {
-                try {
-                    const fallbackClient = axios.create({
-                        baseURL: this.fallbackURL,
-                        timeout: 10000,
-                        headers: this.headers
-                    });
-                    return await fallbackClient.request({
-                        method,
-                        url: path,
-                        ...options
-                    });
-                } catch (fallbackError) {
-                    throw fallbackError;
+        const servers = [
+            this.baseURL,
+            this.fallbackURL,
+            "https://e43.kotaksecurities.com",
+            "https://e22.kotaksecurities.com"
+        ];
+
+        let lastError;
+        for (const serverUrl of servers) {
+            try {
+                const client = axios.create({
+                    baseURL: serverUrl,
+                    timeout: 10000,
+                    headers: this.headers
+                });
+                return await client.request({
+                    method,
+                    url: path,
+                    ...options
+                });
+            } catch (error) {
+                lastError = error;
+                // If it's a 4xx error (like 401 unauthorized), don't retry other servers, just throw it
+                // We only retry on 5xx or connection/DNS errors
+                if (error.response && error.response.status >= 400 && error.response.status < 500) {
+                    throw error;
                 }
             }
-            throw error;
         }
+        throw lastError;
     }
 
     // --------------------------------------------------
@@ -75,11 +88,22 @@ class KotakNeoAdapter {
             try {
                 response = await this._request("GET", "/quick/user/trades", { params });
             } catch (err) {
-                // Check if session token expired
-                if (err.response?.data?.stCode === 100022 || err.response?.data?.errMsg?.includes("session")) {
-                    throw new Error("Kotak Neo session has expired. Please update your session token in Broker Accounts.");
+                // Check if session token expired or unauthorized
+                if (
+                    err.response?.status === 401 ||
+                    err.response?.status === 403 ||
+                    err.response?.data?.stCode === 100022 ||
+                    err.response?.data?.errMsg?.toLowerCase().includes("session") ||
+                    err.response?.data?.errMsg?.toLowerCase().includes("unauthorized") ||
+                    err.response?.data?.errMsg?.toLowerCase().includes("invalid token")
+                ) {
+                    throw new Error(
+                        "Kotak Neo session has expired or token is invalid. " +
+                        "Please update your Access Token and Session ID (sid) in Broker Accounts. " +
+                        "Kotak Neo tokens are valid only for the current trading day."
+                    );
                 }
-                // Try fetching from user orders if trades endpoint is empty or restricted
+                // Try fetching from user orders if trades endpoint is restricted
                 try {
                     response = await this._request("GET", "/quick/user/orders", { params });
                 } catch {
