@@ -17,6 +17,7 @@ import pnlEngine from "../pnl/PnLEngine.js";
 import marketDataEngine from "../marketData/MarketDataEngine.js";
 import UpstoxAdapter from "../../brokers/upstox/UpstoxAdaptor.js";
 import KotakNeoAdapter from "../../brokers/kotakNeo/KotakNeoAdapter.js";
+import { mapKotakNeoPosition } from "../../brokers/kotakNeo/KotakNeoMapper.js";
 import DhanAdapter from "../../brokers/dhan/DhanAdapter.js";
 import { mapDhanPosition } from "../../brokers/dhan/DhanMapper.js";
 import AngelOneAdapter from "../../brokers/angelOne/AngelOneAdapter.js";
@@ -170,20 +171,34 @@ class LiveWebSocketService {
                                 // Token might be expired or market closed, ignore
                             }
                         }
-                    } else if (acc.broker === "KOTAK_NEO" && acc.credentials?.accessToken) {
-                        const token = decrypt(acc.credentials.accessToken);
-                        const sid = acc.credentials?.refreshToken ? decrypt(acc.credentials.refreshToken) : token;
+                    } else if (acc.broker === "KOTAK_NEO") {
+                        const token = acc.credentials?.accessToken ? decrypt(acc.credentials.accessToken) : "";
+                        const sid = acc.credentials?.refreshToken ? decrypt(acc.credentials.refreshToken) : "";
                         const consumerKey = acc.credentials?.apiKey ? decrypt(acc.credentials.apiKey) : "";
-                        if (token) {
+                        const mpin = acc.credentials?.password ? decrypt(acc.credentials.password) : "";
+                        const totpSecret = acc.credentials?.totpSecret ? decrypt(acc.credentials.totpSecret) : "";
+                        const ucc = acc.clientId || "";
+
+                        if (token || (consumerKey && mpin && totpSecret)) {
                             brokerAuth.kotakToken = token;
                             brokerAuth.kotakSid = sid;
                             brokerAuth.kotakConsumerKey = consumerKey;
-                            const kotak = new KotakNeoAdapter({ accessToken: token, sid, consumerKey });
+                            const kotak = new KotakNeoAdapter({
+                                accessToken: token,
+                                sid,
+                                consumerKey,
+                                ucc,
+                                mpin,
+                                totpSecret
+                            });
                             try {
                                 const kotakPos = await kotak.getPositions();
-                                if (Array.isArray(kotakPos)) brokerPositions.push(...kotakPos);
+                                if (Array.isArray(kotakPos)) {
+                                    const mapped = kotakPos.map(mapKotakNeoPosition).filter(Boolean);
+                                    brokerPositions.push(...mapped);
+                                }
                             } catch (e) {
-                                // Token might be expired or market closed, ignore
+                                // Token might be expired or market closed, ignore silently
                             }
                         }
                     } else if (acc.broker === "DHAN" && acc.credentials?.accessToken) {

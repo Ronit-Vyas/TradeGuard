@@ -212,6 +212,24 @@ export default function BrokerAccountForm() {
             </div>
           )}
 
+          {form.broker === 'KOTAK_NEO' && (
+            <div style={{
+              background: 'rgba(239, 68, 68, 0.08)',
+              border: '1px solid rgba(239, 68, 68, 0.25)',
+              borderRadius: 8,
+              padding: '12px 16px',
+              marginBottom: 16,
+              fontSize: '0.875rem',
+              color: '#dc2626'
+            }}>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>Kotak Neo Trade API Setup Guide:</div>
+              <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5, color: 'inherit' }}>
+                <li><strong>Automatic Login (Recommended):</strong> Go to Kotak Neo app/web → <em>More → Trade API → API Dashboard</em> → Generate or view your Application. Copy both the <em>Consumer Key</em> and <em>Consumer Secret</em>. Also provide your <em>Client ID / UCC</em>, <em>Trading MPIN</em>, and <em>TOTP Secret Key</em> (from Authenticator QR code setup). TradeGuard will automatically log in and refresh your session daily!</li>
+                <li><strong>Manual Token Mode:</strong> Alternatively, enter your <em>Trade Token (JWT starting with eyJ...)</em> and <em>Session ID / SID (UUID format)</em>. Note that tokens expire at the end of each trading day.</li>
+              </ul>
+            </div>
+          )}
+
           <div className="form-group">
             <label className="form-label">
               {form.broker === 'KOTAK_NEO' 
@@ -263,47 +281,55 @@ export default function BrokerAccountForm() {
             </>
           )}
 
-          {form.broker !== 'ANGEL_ONE' && (
-            <SecretField 
-              name="accessToken" 
-              label={
-                form.broker === 'KOTAK_NEO' 
-                  ? 'Kotak Neo Trade Token / Auth (JWT starts with eyJ...) *' 
-                  : form.broker === 'DHAN' 
-                  ? 'Dhan Access Token (JWT from DhanHQ API portal) *' 
-                  : 'Upstox Access Token (Bearer JWT) *'
-              } 
-              placeholder={
-                form.broker === 'KOTAK_NEO' 
-                  ? 'Paste Kotak Neo trade JWT token (starts with eyJ...)' 
-                  : form.broker === 'DHAN' 
-                  ? 'Paste Dhan 24-hr access token (from dhanhq.co)' 
-                  : 'Paste Upstox Bearer access token'
-              } 
-            />
-          )}
-
-          {form.broker === 'KOTAK_NEO' && (
-            <SecretField 
-              name="refreshToken" 
-              label="Kotak Neo Session ID / SID (UUID format)" 
-              placeholder="Paste Kotak Neo Session ID (e.g. 521b3622-60f6-4893...)" 
-            />
-          )}
-
           {form.broker === 'KOTAK_NEO' && (
             <>
               <SecretField 
                 name="apiKey" 
-                label="Consumer Key (Optional)" 
-                placeholder="Optional Consumer Key" 
+                label="Consumer Key (from Neo App Trade API card) *" 
+                placeholder="Paste Consumer Key token from Neo App / Web (starts with 85-...)" 
               />
               <SecretField 
                 name="apiSecret" 
-                label="Consumer Secret (Optional)" 
-                placeholder="Optional Consumer Secret" 
+                label="Consumer Secret (from Neo App Trade API card) *" 
+                placeholder="Paste Consumer Secret from Neo App / Web" 
+              />
+              <SecretField 
+                name="password" 
+                label="Trading MPIN (6-digit PIN for Auto-Login)" 
+                placeholder="6-digit Trading MPIN" 
+              />
+              <SecretField 
+                name="totpSecret" 
+                label="TOTP Secret Key (for Auto-Login)" 
+                placeholder="Alphanumeric secret key under QR code" 
+              />
+              <SecretField 
+                name="accessToken" 
+                label="Manual Trade Token / Auth (starts with eyJ... - Optional if MPIN & TOTP Key entered)" 
+                placeholder="Optional JWT trade token (starts with eyJ...)" 
+              />
+              <SecretField 
+                name="refreshToken" 
+                label="Manual Session ID / SID (UUID - Optional if MPIN & TOTP Key entered)" 
+                placeholder="Optional Session ID UUID (e.g. 521b3622-60f6-4893...)" 
               />
             </>
+          )}
+
+          {form.broker !== 'ANGEL_ONE' && form.broker !== 'KOTAK_NEO' && (
+            <SecretField 
+              name="accessToken" 
+              label={
+                form.broker === 'DHAN' 
+                  ? 'Dhan Access Token (JWT from DhanHQ API portal) *' 
+                  : 'Upstox Access Token (Bearer JWT) *'
+              } 
+              placeholder={
+                form.broker === 'DHAN' 
+                  ? 'Paste Dhan 24-hr access token (from dhanhq.co)' 
+                  : 'Paste Upstox Bearer access token'
+              } 
+            />
           )}
 
           {form.broker === 'UPSTOX' && (

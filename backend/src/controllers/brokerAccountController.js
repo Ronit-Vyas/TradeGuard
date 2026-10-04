@@ -77,43 +77,73 @@ export const verifyBrokerCredentials = async (brokerAccount) => {
     }
 
     if (brokerAccount.broker === "KOTAK_NEO") {
-        if (!brokerAccount.credentials?.accessToken) {
-            if (brokerAccount.isConnected) {
-                brokerAccount.isConnected = false;
-                await brokerAccount.save();
-            }
-            return false;
-        }
-
-        let token = null;
+        let token = "";
         try {
-            token = decrypt(brokerAccount.credentials.accessToken);
-        } catch (e) {
-            token = brokerAccount.credentials.accessToken;
+            token = brokerAccount.credentials?.accessToken
+                ? decrypt(brokerAccount.credentials.accessToken)
+                : "";
+        } catch {
+            token = brokerAccount.credentials?.accessToken || "";
         }
 
-        if (!token) {
-            if (brokerAccount.isConnected) {
-                brokerAccount.isConnected = false;
-                await brokerAccount.save();
-            }
-            return false;
-        }
-
-        const sid = brokerAccount.credentials.refreshToken 
-            ? decrypt(brokerAccount.credentials.refreshToken) 
-            : (brokerAccount.credentials.apiKey ? decrypt(brokerAccount.credentials.apiKey) : "");
-
-        const consumerKey = brokerAccount.credentials.apiKey 
-            ? decrypt(brokerAccount.credentials.apiKey) 
+        const sid = brokerAccount.credentials?.refreshToken
+            ? decrypt(brokerAccount.credentials.refreshToken)
             : "";
 
+        const consumerKey = brokerAccount.credentials?.apiKey
+            ? decrypt(brokerAccount.credentials.apiKey)
+            : "";
+
+        const consumerSecret = brokerAccount.credentials?.apiSecret
+            ? decrypt(brokerAccount.credentials.apiSecret)
+            : "";
+
+        const mpin = brokerAccount.credentials?.password
+            ? decrypt(brokerAccount.credentials.password)
+            : "";
+
+        const totpSecret = brokerAccount.credentials?.totpSecret
+            ? decrypt(brokerAccount.credentials.totpSecret)
+            : "";
+
+        const ucc = brokerAccount.clientId || "";
+
+        const adapter = new KotakNeoAdapter({
+            accessToken: token,
+            sid,
+            consumerKey,
+            consumerSecret,
+            ucc,
+            mpin,
+            totpSecret
+        });
+
+        // If no token or token is not a JWT, but TOTP auto-login is available, perform login
+        if ((!token || !token.startsWith("eyJ")) && adapter.canAutoLogin()) {
+            try {
+                const session = await adapter.loginWithTotp();
+                if (session.accessToken) {
+                    brokerAccount.credentials.accessToken = encrypt(session.accessToken);
+                    if (session.sid) brokerAccount.credentials.refreshToken = encrypt(session.sid);
+                    brokerAccount.isConnected = true;
+                    brokerAccount.lastConnectedAt = new Date();
+                    await brokerAccount.save();
+                    return true;
+                }
+            } catch (autoErr) {
+                console.warn("[Kotak Neo Verify] Auto-login failed:", autoErr.message);
+            }
+        }
+
+        if (!adapter.accessToken) {
+            if (brokerAccount.isConnected) {
+                brokerAccount.isConnected = false;
+                await brokerAccount.save();
+            }
+            return false;
+        }
+
         try {
-            const adapter = new KotakNeoAdapter({
-                accessToken: token,
-                sid,
-                consumerKey
-            });
             await adapter.getPositions();
 
             if (!brokerAccount.isConnected) {
@@ -123,29 +153,31 @@ export const verifyBrokerCredentials = async (brokerAccount) => {
             }
             return true;
         } catch (error) {
-            const isAuthError =
+            const isAuthOrFormatError =
                 error.response?.status === 401 ||
                 error.response?.status === 403 ||
-                error.response?.data?.errMsg?.toLowerCase().includes("session") ||
-                error.response?.data?.errMsg?.toLowerCase().includes("unauthorized") ||
-                error.response?.data?.errMsg?.toLowerCase().includes("token expired");
+                error.response?.data?.stCode === 200002 ||
+                error.response?.data?.stCode === 100022 ||
+                error.message.includes("200002") ||
+                error.message.includes("session") ||
+                error.message.includes("expired") ||
+                error.message.includes("format error");
 
-            if (isAuthError) {
-                if (brokerAccount.isConnected) {
-                    brokerAccount.isConnected = false;
-                    await brokerAccount.save();
+            if (isAuthOrFormatError && adapter.canAutoLogin()) {
+                try {
+                    const session = await adapter.loginWithTotp();
+                    if (session.accessToken) {
+                        brokerAccount.credentials.accessToken = encrypt(session.accessToken);
+                        if (session.sid) brokerAccount.credentials.refreshToken = encrypt(session.sid);
+                        await adapter.getPositions();
+                        brokerAccount.isConnected = true;
+                        brokerAccount.lastConnectedAt = new Date();
+                        await brokerAccount.save();
+                        return true;
+                    }
+                } catch (retryErr) {
+                    console.warn("[Kotak Neo Verify] Re-login failed:", retryErr.message);
                 }
-                return false;
-            }
-
-            // If the Kotak Neo gateway was reached (e.g. stCode received) or valid active token is configured
-            if (error.response?.data?.stCode || (token && token.length >= 10 && brokerAccount.isActive)) {
-                if (!brokerAccount.isConnected) {
-                    brokerAccount.isConnected = true;
-                    brokerAccount.lastConnectedAt = new Date();
-                    await brokerAccount.save();
-                }
-                return true;
             }
 
             if (brokerAccount.isConnected) {

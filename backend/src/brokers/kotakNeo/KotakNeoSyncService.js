@@ -2,7 +2,7 @@ import KotakNeoAdapter from "./KotakNeoAdapter.js";
 import { mapKotakNeoTrade } from "./KotakNeoMapper.js";
 import BrokerAccount from "../../models/BrokerAccount.js";
 import TradeRecord from "../../models/TradeRecord.js";
-import { decrypt } from "../../utils/encryption.js";
+import { decrypt, encrypt } from "../../utils/encryption.js";
 
 const syncKotakNeoHistoricalTrades = async ({
     brokerAccountId,
@@ -26,47 +26,99 @@ const syncKotakNeoHistoricalTrades = async ({
         throw new Error("Kotak Neo broker account is inactive");
     }
 
-    if (!brokerAccount.credentials?.accessToken) {
-        throw new Error("Kotak Neo access token not found");
-    }
-
-    const accessToken = decrypt(brokerAccount.credentials.accessToken);
-    if (!accessToken) {
-        throw new Error("Failed to decrypt Kotak Neo access token");
-    }
-
-    // Check if the token is known to be expired
-    if (brokerAccount.credentials.tokenExpiresAt) {
-        const expiry = new Date(brokerAccount.credentials.tokenExpiresAt);
-        if (!isNaN(expiry.getTime()) && expiry < new Date()) {
-            throw new Error(
-                "Kotak Neo access token has expired. " +
-                "Please log in to Kotak Neo and update your Access Token and Session ID (sid) in Broker Accounts."
-            );
-        }
-    }
-
-    const sid = brokerAccount.credentials.refreshToken 
-        ? decrypt(brokerAccount.credentials.refreshToken) 
-        : (brokerAccount.credentials.apiKey ? decrypt(brokerAccount.credentials.apiKey) : "");
-
-    const consumerKey = brokerAccount.credentials.apiKey 
-        ? decrypt(brokerAccount.credentials.apiKey) 
+    let accessToken = brokerAccount.credentials?.accessToken
+        ? decrypt(brokerAccount.credentials.accessToken)
         : "";
+
+    const sid = brokerAccount.credentials?.refreshToken
+        ? decrypt(brokerAccount.credentials.refreshToken)
+        : "";
+
+    const consumerKey = brokerAccount.credentials?.apiKey
+        ? decrypt(brokerAccount.credentials.apiKey)
+        : "";
+
+    const mpin = brokerAccount.credentials?.password
+        ? decrypt(brokerAccount.credentials.password)
+        : "";
+
+    const totpSecret = brokerAccount.credentials?.totpSecret
+        ? decrypt(brokerAccount.credentials.totpSecret)
+        : "";
+
+    const ucc = brokerAccount.clientId || "";
+
+    const canAutoLogin = !!(consumerKey && (ucc || brokerAccount.credentials?.mobileNumber) && mpin && totpSecret);
+
+    if (!accessToken && !canAutoLogin) {
+        throw new Error(
+            "Kotak Neo access token not found. " +
+            "Please provide your Kotak Neo Trade Access Token and Session ID (sid), " +
+            "or enter your Trading MPIN and TOTP Secret for automatic login."
+        );
+    }
 
     const adapter = new KotakNeoAdapter({
         accessToken,
         sid,
-        consumerKey
+        consumerKey,
+        ucc,
+        mpin,
+        totpSecret
     });
+
+    // If no access token but auto-login is available, login first
+    if (!accessToken && canAutoLogin) {
+        try {
+            console.log(`[Kotak Neo Sync] Authenticating account ${brokerAccountId} with TOTP...`);
+            const session = await adapter.loginWithTotp();
+            if (session.accessToken) {
+                brokerAccount.credentials.accessToken = encrypt(session.accessToken);
+                if (session.sid) brokerAccount.credentials.refreshToken = encrypt(session.sid);
+                brokerAccount.isConnected = true;
+                brokerAccount.lastConnectedAt = new Date();
+                await brokerAccount.save();
+                console.log(`[Kotak Neo Sync] Successfully authenticated and updated session tokens`);
+            }
+        } catch (loginErr) {
+            throw new Error(`Kotak Neo TOTP authentication failed: ${loginErr.message}`);
+        }
+    }
 
     console.log(`[Kotak Neo Sync] Fetching trades for account ${brokerAccountId} (${startDate || "all"} - ${endDate || "all"})`);
 
     let trades = [];
-    if (startDate && endDate) {
-        trades = await adapter.getHistoricalTrades({ startDate, endDate });
-    } else {
-        trades = await adapter.getTrades();
+    try {
+        if (startDate && endDate) {
+            trades = await adapter.getHistoricalTrades({ startDate, endDate });
+        } else {
+            trades = await adapter.getTrades();
+        }
+    } catch (err) {
+        // If expired and can auto login, try once more
+        if (canAutoLogin && (err.message.includes("expired") || err.message.includes("200002") || err.message.includes("format error"))) {
+            try {
+                console.log(`[Kotak Neo Sync] Session expired, re-authenticating with TOTP...`);
+                const session = await adapter.loginWithTotp();
+                if (session.accessToken) {
+                    brokerAccount.credentials.accessToken = encrypt(session.accessToken);
+                    if (session.sid) brokerAccount.credentials.refreshToken = encrypt(session.sid);
+                    brokerAccount.isConnected = true;
+                    brokerAccount.lastConnectedAt = new Date();
+                    await brokerAccount.save();
+
+                    if (startDate && endDate) {
+                        trades = await adapter.getHistoricalTrades({ startDate, endDate });
+                    } else {
+                        trades = await adapter.getTrades();
+                    }
+                }
+            } catch (retryErr) {
+                throw new Error(`Failed to fetch trades after re-authentication: ${retryErr.message}`);
+            }
+        } else {
+            throw err;
+        }
     }
 
     // If trade report is empty, also inspect executed orders from the order book
@@ -130,6 +182,12 @@ const syncKotakNeoHistoricalTrades = async ({
             skipped++;
         }
     }
+
+    // Update last sync timestamp on account
+    brokerAccount.lastSyncAt = new Date();
+    brokerAccount.isConnected = true;
+    brokerAccount.lastConnectedAt = new Date();
+    await brokerAccount.save();
 
     console.log(`[Kotak Neo Sync] Completed: ${inserted} inserted, ${updated} updated, ${skipped} skipped`);
 

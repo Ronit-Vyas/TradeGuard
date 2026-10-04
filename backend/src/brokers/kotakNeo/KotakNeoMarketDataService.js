@@ -33,7 +33,7 @@ class KotakNeoMarketDataService {
 
         const adapter = new KotakNeoAdapter({
             accessToken,
-            sid: sid || accessToken,
+            sid: sid || "",
             consumerKey: consumerKey || ""
         });
 
@@ -118,7 +118,7 @@ class KotakNeoMarketDataService {
     async getQuotes(symbols, accessToken, sid = null, consumerKey = null) {
         const adapter = new KotakNeoAdapter({
             accessToken,
-            sid: sid || accessToken,
+            sid: sid || "",
             consumerKey: consumerKey || ""
         });
         const symList = Array.isArray(symbols) ? symbols : [symbols];

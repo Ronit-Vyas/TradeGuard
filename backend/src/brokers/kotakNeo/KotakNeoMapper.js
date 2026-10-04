@@ -115,9 +115,65 @@ const mapKotakNeoTrade = (trade) => {
     };
 };
 
+const mapKotakNeoPosition = (pos) => {
+    if (!pos) return null;
+
+    const buyQty = Number(pos.flBuyQty ?? pos.buyQty ?? pos.cfBuyQty ?? 0);
+    const sellQty = Number(pos.flSellQty ?? pos.sellQty ?? pos.cfSellQty ?? 0);
+    const netQty = Number(pos.netQty ?? pos.flQty ?? (buyQty - sellQty));
+
+    const buyAvg = Number(pos.buyAvgPrc ?? pos.buyAvg ?? (buyQty > 0 ? (Number(pos.buyAmt || 0) / buyQty) : 0));
+    const sellAvg = Number(pos.sellAvgPrc ?? pos.sellAvg ?? (sellQty > 0 ? (Number(pos.sellAmt || 0) / sellQty) : 0));
+    const avgPrice = netQty > 0 ? buyAvg : (netQty < 0 ? sellAvg : (buyAvg || sellAvg));
+
+    const ltp = Number(pos.ltp ?? pos.prc ?? pos.lastPrice ?? 0);
+    const pnl = Number(pos.pnl ?? pos.urPnl ?? pos.rPnl ?? pos.totPnl ?? 0);
+
+    const symbol = String(pos.trdSym || pos.sym || pos.trading_symbol || "").toUpperCase();
+    const token = String(pos.tok || pos.token || pos.instrument_token || "");
+    const exchange = String(pos.exSeg || "NSE").toUpperCase().split("_")[0];
+
+    return {
+        broker: "KOTAK_NEO",
+        symbol,
+        instrumentToken: token,
+        exchange,
+        product: mapKotakNeoProduct(pos.prod || pos.product),
+        quantity: netQty,
+        buyQuantity: buyQty,
+        sellQuantity: sellQty,
+        averagePrice: avgPrice,
+        buyAveragePrice: buyAvg,
+        sellAveragePrice: sellAvg,
+        lastPrice: ltp,
+        pnl,
+        raw: pos
+    };
+};
+
+const mapKotakNeoHolding = (holding) => {
+    if (!holding) return null;
+
+    return {
+        broker: "KOTAK_NEO",
+        symbol: String(holding.trdSym || holding.sym || holding.trading_symbol || "").toUpperCase(),
+        isin: holding.isin || "",
+        exchange: String(holding.exSeg || "NSE").toUpperCase().split("_")[0],
+        quantity: Number(holding.hldQty || holding.qty || holding.quantity || 0),
+        authorisedQuantity: Number(holding.authQty || holding.authorisedquantity || 0),
+        averagePrice: Number(holding.avgPrc || holding.averageprice || 0),
+        lastPrice: Number(holding.ltp || holding.lastPrice || 0),
+        pnl: Number(holding.pnl || holding.profitandloss || 0),
+        closePrice: Number(holding.close || holding.closePrice || 0)
+    };
+};
+
 export {
     mapKotakNeoSegment,
     mapKotakNeoProduct,
     mapKotakNeoOrderType,
-    mapKotakNeoTrade
+    mapKotakNeoTrade,
+    mapKotakNeoPosition,
+    mapKotakNeoHolding
 };
+
