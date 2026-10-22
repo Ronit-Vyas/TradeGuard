@@ -78,8 +78,6 @@
 | `ANGEL_CLIENT_ID` | Angel One client ID | For Angel One |
 | `DHAN_CLIENT_ID` | Dhan client ID | For Dhan |
 | `DHAN_ACCESS_TOKEN` | Dhan access token | For Dhan |
-| `KOTAK_API_KEY` | Kotak Neo API key | For Kotak |
-| `KOTAK_CLIENT_ID` | Kotak Neo client ID | For Kotak |
 
 ---
 
@@ -107,7 +105,7 @@
 ```javascript
 {
   userId:          ObjectId,  // ref: 'User' — Required
-  broker:          String,    // Required — enum: ['UPSTOX', 'ANGEL_ONE', 'DHAN', 'KOTAK_NEO']
+  broker:          String,    // Required — enum: ['UPSTOX', 'ANGEL_ONE', 'DHAN']
   credentials: {
     clientId:      String,    // Required
     apiKey:        String,    // Optional — AES encrypted before save
@@ -138,7 +136,7 @@
 {
   userId:           ObjectId,  // ref: 'User' — Required, indexed
   brokerAccountId: ObjectId,  // ref: 'BrokerAccount' — Required
-  broker:           String,    // Required — enum: ['UPSTOX', 'ANGEL_ONE', 'DHAN', 'KOTAK_NEO']
+  broker:           String,    // Required — enum: ['UPSTOX', 'ANGEL_ONE', 'DHAN']
   tradeId:          String,    // Required — broker's unique trade ID
   orderId:          String,    // Optional — default: null
   symbol:           String,    // Required
@@ -302,7 +300,7 @@
 ```json
 {
   "userId": "string (required) — MongoDB ObjectId of User",
-  "broker": "string (required) — one of: UPSTOX, ANGEL_ONE, DHAN, KOTAK_NEO",
+  "broker": "string (required) — one of: UPSTOX, ANGEL_ONE, DHAN",
   "credentials": {
     "clientId": "string (required)",
     "apiKey": "string (optional)",
@@ -412,7 +410,7 @@
 **Request Body (all fields optional — only send what you want to update):**
 ```json
 {
-  "broker": "string — one of: UPSTOX, ANGEL_ONE, DHAN, KOTAK_NEO",
+  "broker": "string — one of: UPSTOX, ANGEL_ONE, DHAN",
   "credentials": {
     "clientId": "string",
     "apiKey": "string",
@@ -507,7 +505,6 @@ Authorization: Bearer <jwt_token>
 | `UPSTOX` | Upstox |
 | `ANGEL_ONE` | Angel One |
 | `DHAN` | Dhan |
-| `KOTAK_NEO` | Kotak Neo |
 
 ### Lifecycle
 
@@ -550,7 +547,7 @@ Trade records are created internally by broker sync services (not via direct API
 |-------|------|-------------|
 | `userId` | ObjectId | Which user owns this trade |
 | `brokerAccountId` | ObjectId | Which broker account executed this trade |
-| `broker` | String | Broker name (UPSTOX, ANGEL_ONE, DHAN, KOTAK_NEO) |
+| `broker` | String | Broker name (UPSTOX, ANGEL_ONE, DHAN) |
 | `tradeId` | String | Broker's unique trade identifier |
 | `orderId` | String | Broker's order ID |
 | `symbol` | String | Trading symbol (e.g., "RELIANCE", "INFY") |
@@ -634,8 +631,7 @@ Contains static config for each broker:
 - TradeGuard accepts this Secret Key in `totpSecret` to automatically generate RFC 6238 TOTPs on the fly and seamlessly maintain/refresh sessions without requiring manual OTP entry.
 - Direct pasting of active Bearer JWT tokens is also supported.
 
-### Kotak Neo & Dhan Integrations
-- Kotak Neo: `backend/src/brokers/kotakNeo/` (KotakNeoAdapter, Mapper, SyncService, MarketDataService)
+### Dhan Integration
 - DhanHQ: `backend/src/brokers/dhan/` (DhanAdapter, Mapper, SyncService, MarketDataService)
 
 ---

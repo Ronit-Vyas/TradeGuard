@@ -243,58 +243,6 @@ const brokerConfig = {
         },
 
 
-        // KOTAK NEO
-
-        KOTAK_NEO: {
-
-            name: "Kotak Neo",
-
-            // Kotak Neo has multiple brokerage plans.
-            // This is the Trade Free plan.
-
-            brokeragePlan: "TRADE_FREE",
-
-            brokerage: {
-
-                equityDelivery: {
-                    type: "PERCENTAGE",
-                    percentage: 0.20,
-                    unit: "PERCENT",
-                    basis: "TURNOVER"
-                },
-
-                equityIntraday: {
-                    type: "LOWER_OF",
-                    flat: 10,
-                    percentage: 0.05,
-                    unit: "PERCENT",
-                    basis: "TURNOVER"
-                },
-
-                equityFutures: {
-                    type: "FLAT",
-                    amount: 10,
-                    unit: "PER_ORDER"
-                },
-
-                equityOptions: {
-                    type: "FLAT",
-                    amount: 10,
-                    unit: "PER_ORDER"
-                }
-            },
-
-            apiTrading: {
-                brokerage: 0,
-                platformFee: 0
-            },
-
-            otherCharges: {
-                apiSubscription: 0
-            }
-        },
-
-
         // ANGEL ONE
 
         ANGEL_ONE: {

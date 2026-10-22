@@ -11,7 +11,6 @@ export default function BrokerComparison() {
     UPSTOX: true,
     ANGEL_ONE: true,
     DHAN: true,
-    KOTAK_NEO: true,
   });
   const [brokers, setBrokers] = useState([]);
   const [loading, setLoading] = useState(true);

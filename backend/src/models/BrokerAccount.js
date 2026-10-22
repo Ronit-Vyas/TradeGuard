@@ -11,7 +11,7 @@ const brokerAccountSchema = new mongoose.Schema(
 
         broker: {
             type: String,
-            enum: ["UPSTOX", "ANGEL_ONE", "DHAN", "KOTAK_NEO"],
+            enum: ["UPSTOX", "ANGEL_ONE", "DHAN"],
             required: true
         },
 

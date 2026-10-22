@@ -8,7 +8,6 @@
  */
 
 import UpstoxClient from "upstox-js-sdk";
-import kotakNeoMarketData from "../../brokers/kotakNeo/KotakNeoMarketDataService.js";
 import dhanMarketData from "../../brokers/dhan/DhanMarketDataService.js";
 import angelOneMarketData from "../../brokers/angelOne/AngelOneMarketDataService.js";
 
@@ -48,7 +47,7 @@ export class MarketDataEngine {
      * Start market data streaming for a user's open positions
      * @param {string} userId - User identifier
      * @param {Array} positions - User open positions
-     * @param {string|object} brokerAuth - Upstox access token OR object { upstoxToken, kotakToken, kotakSid, kotakConsumerKey }
+     * @param {string|object} brokerAuth - Upstox access token OR object { upstoxToken, dhanToken, dhanClientId, angelToken, angelApiKey }
      */
     async start(userId, positions = [], brokerAuth = null) {
         if (!userId) return;
@@ -77,9 +76,6 @@ export class MarketDataEngine {
         });
 
         const upstoxToken = typeof brokerAuth === "string" ? brokerAuth : brokerAuth?.upstoxToken;
-        const kotakToken = typeof brokerAuth === "object" ? brokerAuth?.kotakToken : null;
-        const kotakSid = typeof brokerAuth === "object" ? brokerAuth?.kotakSid : null;
-        const kotakConsumerKey = typeof brokerAuth === "object" ? brokerAuth?.kotakConsumerKey : null;
         const dhanToken = typeof brokerAuth === "object" ? brokerAuth?.dhanToken : null;
         const dhanClientId = typeof brokerAuth === "object" ? brokerAuth?.dhanClientId : null;
         const angelToken = typeof brokerAuth === "object" ? brokerAuth?.angelToken : null;
@@ -146,36 +142,7 @@ export class MarketDataEngine {
             }
         }
 
-        // 2. Try connecting to Kotak Neo Market Data Service if token is available
-        if (kotakToken) {
-            try {
-                await kotakNeoMarketData.start(
-                    uId,
-                    kotakToken,
-                    instrumentKeys,
-                    (tick) => {
-                        liveBrokerConnected = true;
-                        if (this.simulators.has(uId)) {
-                            clearInterval(this.simulators.get(uId));
-                            this.simulators.delete(uId);
-                        }
-                        if (tick?.instrumentKey && tick?.ltp) {
-                            this.notify(uId, tick.instrumentKey, tick.ltp);
-                        }
-                        if (tick?.symbol && tick?.ltp) {
-                            this.notify(uId, tick.symbol, tick.ltp);
-                        }
-                    },
-                    kotakSid,
-                    kotakConsumerKey
-                );
-                console.log(`[MarketDataEngine] Initialized Kotak Neo Market Data stream for user ${uId}`);
-            } catch (kErr) {
-                console.warn("[MarketDataEngine] Kotak Neo market data notice:", kErr.message);
-            }
-        }
-
-        // 3. Try connecting to Dhan Market Data Service if token is available
+        // 2. Try connecting to Dhan Market Data Service if token is available
         if (dhanToken && dhanClientId) {
             try {
                 await dhanMarketData.start(
@@ -277,12 +244,6 @@ export class MarketDataEngine {
                 // ignore
             }
             this.streamers.delete(uId);
-        }
-
-        try {
-            kotakNeoMarketData.stop(uId);
-        } catch (e) {
-            // ignore
         }
 
         try {

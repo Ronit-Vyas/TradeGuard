@@ -212,29 +212,9 @@ export default function BrokerAccountForm() {
             </div>
           )}
 
-          {form.broker === 'KOTAK_NEO' && (
-            <div style={{
-              background: 'rgba(239, 68, 68, 0.08)',
-              border: '1px solid rgba(239, 68, 68, 0.25)',
-              borderRadius: 8,
-              padding: '12px 16px',
-              marginBottom: 16,
-              fontSize: '0.875rem',
-              color: '#dc2626'
-            }}>
-              <div style={{ fontWeight: 600, marginBottom: 4 }}>Kotak Neo Trade API Setup Guide:</div>
-              <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.5, color: 'inherit' }}>
-                <li><strong>Automatic Login (Recommended):</strong> Go to Kotak Neo app/web → <em>More → Trade API → API Dashboard</em> → Generate or view your Application. Copy both the <em>Consumer Key</em> and <em>Consumer Secret</em>. Also provide your <em>Client ID / UCC</em>, <em>Trading MPIN</em>, and <em>TOTP Secret Key</em> (from Authenticator QR code setup). TradeGuard will automatically log in and refresh your session daily!</li>
-                <li><strong>Manual Token Mode:</strong> Alternatively, enter your <em>Trade Token (JWT starting with eyJ...)</em> and <em>Session ID / SID (UUID format)</em>. Note that tokens expire at the end of each trading day.</li>
-              </ul>
-            </div>
-          )}
-
           <div className="form-group">
             <label className="form-label">
-              {form.broker === 'KOTAK_NEO' 
-                ? 'Client ID / UCC *' 
-                : form.broker === 'DHAN' 
+              {form.broker === 'DHAN' 
                 ? 'Dhan Client ID (e.g. 1000000001) *' 
                 : form.broker === 'ANGEL_ONE'
                 ? 'Angel One Client ID (e.g. A123456) *'
@@ -243,9 +223,7 @@ export default function BrokerAccountForm() {
             <input
               className="form-input"
               placeholder={
-                form.broker === 'KOTAK_NEO' 
-                  ? 'e.g. UCC code / Neo User ID (e.g. W0WLI)' 
-                  : form.broker === 'DHAN' 
+                form.broker === 'DHAN' 
                   ? 'e.g. 1000000001 (found in Dhan profile)' 
                   : form.broker === 'ANGEL_ONE'
                   ? 'e.g. A123456 (your Angel One Client ID)'
@@ -281,42 +259,7 @@ export default function BrokerAccountForm() {
             </>
           )}
 
-          {form.broker === 'KOTAK_NEO' && (
-            <>
-              <SecretField 
-                name="apiKey" 
-                label="Consumer Key (from Neo App Trade API card) *" 
-                placeholder="Paste Consumer Key token from Neo App / Web (starts with 85-...)" 
-              />
-              <SecretField 
-                name="apiSecret" 
-                label="Consumer Secret (from Neo App Trade API card) *" 
-                placeholder="Paste Consumer Secret from Neo App / Web" 
-              />
-              <SecretField 
-                name="password" 
-                label="Trading MPIN (6-digit PIN for Auto-Login)" 
-                placeholder="6-digit Trading MPIN" 
-              />
-              <SecretField 
-                name="totpSecret" 
-                label="TOTP Secret Key (for Auto-Login)" 
-                placeholder="Alphanumeric secret key under QR code" 
-              />
-              <SecretField 
-                name="accessToken" 
-                label="Manual Trade Token / Auth (starts with eyJ... - Optional if MPIN & TOTP Key entered)" 
-                placeholder="Optional JWT trade token (starts with eyJ...)" 
-              />
-              <SecretField 
-                name="refreshToken" 
-                label="Manual Session ID / SID (UUID - Optional if MPIN & TOTP Key entered)" 
-                placeholder="Optional Session ID UUID (e.g. 521b3622-60f6-4893...)" 
-              />
-            </>
-          )}
-
-          {form.broker !== 'ANGEL_ONE' && form.broker !== 'KOTAK_NEO' && (
+          {form.broker !== 'ANGEL_ONE' && (
             <SecretField 
               name="accessToken" 
               label={
