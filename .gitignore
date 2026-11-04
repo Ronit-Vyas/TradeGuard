@@ -18,7 +18,6 @@ yarn-debug.log*
 pnpm-debug.log*
 
 # Local database
-data/
 mongodb/
 *.db
 *.sqlite
