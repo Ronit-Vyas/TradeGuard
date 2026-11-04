@@ -1,5 +1,5 @@
 const API_URL =
-  process.env.REACT_APP_API_URL || 'http://localhost:5000';
+  process.env.REACT_APP_API_URL || 'https://tradeguard-8x5c.onrender.com';
 
 class ApiError extends Error {
   constructor(message, status) {
@@ -210,4 +210,4 @@ const WS_URL =
     (window.location.hostname || 'localhost') +
     ':5000/ws/live';
 
-export { ApiError, WS_URL };
+export { ApiError, WS_URL };
