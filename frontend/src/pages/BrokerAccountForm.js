@@ -214,9 +214,7 @@ export default function BrokerAccountForm() {
 
           <div className="form-group">
             <label className="form-label">
-              {form.broker === 'KOTAK_NEO' 
-                ? 'Client ID / UCC *' 
-                : form.broker === 'DHAN' 
+              {form.broker === 'DHAN' 
                 ? 'Dhan Client ID (e.g. 1000000001) *' 
                 : form.broker === 'ANGEL_ONE'
                 ? 'Angel One Client ID (e.g. A123456) *'
@@ -225,9 +223,7 @@ export default function BrokerAccountForm() {
             <input
               className="form-input"
               placeholder={
-                form.broker === 'KOTAK_NEO' 
-                  ? 'e.g. UCC code / Neo User ID (e.g. W0WLI)' 
-                  : form.broker === 'DHAN' 
+                form.broker === 'DHAN' 
                   ? 'e.g. 1000000001 (found in Dhan profile)' 
                   : form.broker === 'ANGEL_ONE'
                   ? 'e.g. A123456 (your Angel One Client ID)'
@@ -267,43 +263,16 @@ export default function BrokerAccountForm() {
             <SecretField 
               name="accessToken" 
               label={
-                form.broker === 'KOTAK_NEO' 
-                  ? 'Kotak Neo Trade Token / Auth (JWT starts with eyJ...) *' 
-                  : form.broker === 'DHAN' 
+                form.broker === 'DHAN' 
                   ? 'Dhan Access Token (JWT from DhanHQ API portal) *' 
                   : 'Upstox Access Token (Bearer JWT) *'
               } 
               placeholder={
-                form.broker === 'KOTAK_NEO' 
-                  ? 'Paste Kotak Neo trade JWT token (starts with eyJ...)' 
-                  : form.broker === 'DHAN' 
+                form.broker === 'DHAN' 
                   ? 'Paste Dhan 24-hr access token (from dhanhq.co)' 
                   : 'Paste Upstox Bearer access token'
               } 
             />
-          )}
-
-          {form.broker === 'KOTAK_NEO' && (
-            <SecretField 
-              name="refreshToken" 
-              label="Kotak Neo Session ID / SID (UUID format)" 
-              placeholder="Paste Kotak Neo Session ID (e.g. 521b3622-60f6-4893...)" 
-            />
-          )}
-
-          {form.broker === 'KOTAK_NEO' && (
-            <>
-              <SecretField 
-                name="apiKey" 
-                label="Consumer Key (Optional)" 
-                placeholder="Optional Consumer Key" 
-              />
-              <SecretField 
-                name="apiSecret" 
-                label="Consumer Secret (Optional)" 
-                placeholder="Optional Consumer Secret" 
-              />
-            </>
           )}
 
           {form.broker === 'UPSTOX' && (

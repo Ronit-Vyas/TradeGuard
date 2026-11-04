@@ -626,7 +626,7 @@ export const getBrokerComparison = async (req, res) => {
       intraday: config.brokerage?.equityIntraday?.type === "FLAT"
         ? `₹${config.brokerage?.equityIntraday?.amount || 20}/order`
         : `₹${config.brokerage?.equityIntraday?.flat || 20}/order`,
-      segments: key === "UPSTOX" ? "Equity, F&O, Currency" : key === "KOTAK_NEO" ? "Equity, F&O, Currency" : key === "ANGEL_ONE" ? "Equity, F&O, Commodity, Currency" : "Equity, F&O, Commodity",
+      segments: key === "UPSTOX" ? "Equity, F&O, Currency" : key === "ANGEL_ONE" ? "Equity, F&O, Commodity, Currency" : "Equity, F&O, Commodity",
       connection: connectedBrokers.has(key) ? "Connected" : "Not configured"
     }));
 

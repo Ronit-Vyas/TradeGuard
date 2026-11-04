@@ -20,8 +20,7 @@ const tradeRecordSchema = new mongoose.Schema(
             enum: [
                 "UPSTOX",
                 "ANGEL_ONE",
-                "DHAN",
-                "KOTAK_NEO"
+                "DHAN"
             ],
             required: true
         },
